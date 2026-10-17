@@ -17,3 +17,7 @@ result
 .env
 .env.*
 !.env.example
+
+# --- graphify: local knowledge-graph tooling (generated / machine-specific) ---
+graphify-out/
+.opencode/
