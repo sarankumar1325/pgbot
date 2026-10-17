@@ -1,0 +1,164 @@
+version: 2
+
+project_name: pgbot
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: pgbot
+    main: ./cmd/pgbot
+    binary: pgbot
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: pgbot
+    formats: [tar.gz]
+    # Windows users expect a zip, not a tar.gz.
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "pgbot_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+
+# Per-artifact CycloneDX SBOMs, published alongside the binaries — a supply-chain
+# expectation for a tool that connects to production databases.
+sboms:
+  - id: pgbot
+    artifacts: archive
+
+# SHA256 checksums — the install script verifies against this before chmod +x.
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+# Keyless signing of the checksum file with cosign. A curl|sh installer that
+# fetches an unverified binary is a supply-chain hazard; publishing a signed
+# checksum lets the paranoid verify provenance.
+signs:
+  # A self-contained cosign bundle (cert + signature + rekor entry in one file).
+  # The installer, the README, and the release smoke job all verify it with
+  # `cosign verify-blob --bundle`. This is the only signing output: cosign v3
+  # (installed by cosign-installer v4) ignores --output-signature /
+  # --output-certificate and fails without a bundle path, which is what took
+  # the v0.8.0 release down — the detached .sig/.pem pair that shipped alongside
+  # the bundle through 0.7.2 as a transition aid is gone.
+  - id: cosign-bundle
+    cmd: cosign
+    signature: "${artifact}.cosign.bundle"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "--yes"
+      - "${artifact}"
+    artifacts: checksum
+    output: true
+
+nfpms:
+  - id: pgbot
+    package_name: pgbot
+    vendor: pgrun.dev
+    homepage: https://pgbot.dev
+    maintainer: pgrun <hello@pgrun.dev>
+    description: In-database observability for PostgreSQL.
+    license: Apache-2.0
+    formats: [deb, rpm]
+    bindir: /usr/bin
+
+dockers:
+  - image_templates:
+      - "ghcr.io/pgrundev/pgbot:{{ .Version }}-amd64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+    goarch: amd64
+  - image_templates:
+      - "ghcr.io/pgrundev/pgbot:{{ .Version }}-arm64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+    goarch: arm64
+
+# Publish multi-arch manifests so `docker run ghcr.io/pgrundev/pgbot` (i.e.
+# :latest) works on Apple Silicon / Graviton, not just amd64. The README lists
+# Docker as a first-class install method and uses the bare (:latest) tag.
+docker_manifests:
+  - name_template: "ghcr.io/pgrundev/pgbot:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/pgrundev/pgbot:{{ .Version }}-amd64"
+      - "ghcr.io/pgrundev/pgbot:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/pgrundev/pgbot:latest"
+    image_templates:
+      - "ghcr.io/pgrundev/pgbot:{{ .Version }}-amd64"
+      - "ghcr.io/pgrundev/pgbot:{{ .Version }}-arm64"
+
+# Homebrew formula, pushed to the pgrundev/homebrew-tap repo so
+# `brew install pgrundev/tap/pgbot` works (issue #8). The workflow's GITHUB_TOKEN
+# can't write to another repo, so the push needs one of two credentials, both
+# passed by release.yml (empty when the secret is absent — both env vars MUST be
+# defined or the templates error):
+#   HOMEBREW_TAP_DEPLOY_KEY — private half of a write deploy key on the tap repo
+#     → git+SSH push (preferred: scoped to exactly one repo, no expiry). Note the
+#     org must allow deploy keys (new orgs disable them by default).
+#   HOMEBREW_TAP_TOKEN — a fine-grained PAT, repository access = homebrew-tap
+#     only, Contents: read/write → GitHub Contents API. Used when no deploy key.
+# The git URL is templated on the key: empty URL makes goreleaser fall through
+# to the token client. skip_upload is templated on both: with neither set the
+# formula is still generated (dist/homebrew) but NOT pushed, so a release never
+# fails for a missing tap credential — and the release's brew-smoke job then
+# fails loudly instead of the install silently 404ing for users.
+brews:
+  - name: pgbot
+    repository:
+      owner: pgrundev
+      name: homebrew-tap
+      branch: main
+      git:
+        url: "{{ if .Env.HOMEBREW_TAP_DEPLOY_KEY }}git@github.com:pgrundev/homebrew-tap.git{{ end }}"
+        private_key: "{{ .Env.HOMEBREW_TAP_DEPLOY_KEY }}"
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    skip_upload: '{{ if or .Env.HOMEBREW_TAP_DEPLOY_KEY .Env.HOMEBREW_TAP_TOKEN }}false{{ else }}true{{ end }}'
+    commit_author:
+      name: pgbot-release
+      email: hello@pgrun.dev
+    commit_msg_template: "pgbot {{ .Tag }}"
+    directory: Formula
+    homepage: "https://pgbot.dev"
+    # No trailing full stop and bin/"pgbot" in the test: `brew audit` style.
+    description: "In-database observability for PostgreSQL"
+    license: "Apache-2.0"
+    install: |
+      bin.install "pgbot"
+    test: |
+      system bin/"pgbot", "--version"
+
+release:
+  github:
+    owner: pgrundev
+    name: pgbot
+  prerelease: auto
+  # Publish the JSON Schema for the --json contracts as release assets, so a
+  # consumer can pin against a version (B7-2). The files are generated from the
+  # Go types and drift-checked in CI (TestSchema_matchesModel).
+  extra_files:
+    - glob: ./schema/*.json
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

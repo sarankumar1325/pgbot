@@ -1,0 +1,302 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: vet + unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::these files need gofmt:"; echo "$unformatted"; exit 1
+          fi
+      # -race: the ASH sampler and store writer run concurrently; the race
+      # detector must stay green (it needs CGO, which the ubuntu runner has).
+      - run: go test -race ./... # DB-dependent tests self-skip without PGBOT_TEST_DSN
+      # The query scrubber is a privacy boundary — fuzz it briefly so a regression
+      # that leaks an email/uuid/number shape fails CI, not a customer.
+      - name: fuzz the query scrubber
+        run: go test ./internal/conn/ -run '^$' -fuzz 'FuzzScrubQueryText' -fuzztime 30s
+
+  lint:
+    name: golangci-lint + govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # Pinned to the version validated locally so a golangci-lint release can't
+      # change the gate out from under a green PR.
+      - name: golangci-lint
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+          "$(go env GOPATH)/bin/golangci-lint" run ./...
+      # A security-positioned tool must scan its own dependency tree.
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
+
+  action-smoke:
+    name: github action smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: build pgbot onto PATH (so the action uses it — no release needed)
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          CGO_ENABLED=0 go build -o "$HOME/.local/bin/pgbot" ./cmd/pgbot
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: start PostgreSQL with a pg_monitor role
+        run: |
+          docker run -d --name pg -p 5432:5432 -e POSTGRES_PASSWORD=pw \
+            postgres:17 -c shared_preload_libraries=pg_stat_statements
+          for i in $(seq 1 60); do docker exec pg pg_isready -U postgres -h 127.0.0.1 -q && break; sleep 1; done
+          docker exec pg psql -U postgres -q \
+            -c "CREATE EXTENSION pg_stat_statements;" \
+            -c "CREATE ROLE pgbot_ro LOGIN PASSWORD 'ro'; GRANT pg_monitor TO pgbot_ro; GRANT CONNECT ON DATABASE postgres TO pgbot_ro;"
+      - name: run the composite action (fail-on=none so findings don't fail the smoke)
+        uses: ./
+        with:
+          dsn: postgres://pgbot_ro:ro@127.0.0.1:5432/postgres
+          format: sarif
+          fail-on: none
+          upload-sarif: "false"
+      - name: the action's SARIF is valid
+        run: |
+          python3 -c "import json,sys; d=json.load(open('pgbot-report.sarif')); assert d['version']=='2.1.0' and d['runs'], 'bad SARIF'; print('valid SARIF,', len(d['runs'][0]['results']), 'results')"
+      # D3-3: exercise the schema profile through the action, capture a base
+      # report, then re-run with base-report — the migration-PR wiring end to end.
+      - name: action profile=schema → base report
+        uses: ./
+        with:
+          dsn: postgres://pgbot_ro:ro@127.0.0.1:5432/postgres
+          profile: schema
+          format: json
+          fail-on: none
+          upload-sarif: "false"
+      - run: cp pgbot-report.json base.json
+      - name: action profile=schema with --fail-on-new (no change → passes)
+        uses: ./
+        with:
+          dsn: postgres://pgbot_ro:ro@127.0.0.1:5432/postgres
+          profile: schema
+          base-report: base.json
+          fail-on: warn
+          upload-sarif: "false"
+
+  # action-smoke pre-builds pgbot onto PATH, so it never runs install.sh. This job
+  # deliberately does NOT, so the action must install via `install.sh` with the
+  # default version 'latest' — the path the "latest is a literal tag → 404" bug
+  # broke and the entry point for the agent-push / CI-check workflow.
+  action-install-smoke:
+    name: github action install path (latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: start PostgreSQL with a pg_monitor role
+        run: |
+          docker run -d --name pg -p 5432:5432 -e POSTGRES_PASSWORD=pw postgres:17
+          for i in $(seq 1 60); do docker exec pg pg_isready -U postgres -h 127.0.0.1 -q && break; sleep 1; done
+          docker exec pg psql -U postgres -q \
+            -c "CREATE ROLE pgbot_ro LOGIN PASSWORD 'ro'; GRANT pg_monitor TO pgbot_ro; GRANT CONNECT ON DATABASE postgres TO pgbot_ro;"
+      - name: run the action with no pgbot on PATH (default version=latest)
+        uses: ./
+        with:
+          dsn: postgres://pgbot_ro:ro@127.0.0.1:5432/postgres
+          format: text
+          fail-on: none
+      - name: the action installed pgbot and it runs
+        run: pgbot --version
+
+  static-check:
+    name: no EXPLAIN ANALYZE
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # pgbot must never execute a query it inspects. EXPLAIN ANALYZE runs the
+      # statement — it must not appear anywhere in the tree.
+      - name: forbid EXPLAIN ANALYZE
+        run: |
+          # Exclude the guard test itself — it names the banned phrase in its own
+          # doc/error strings, exactly as the in-tree Go guard (TestNoExplainAnalyze)
+          # skips its own file.
+          if grep -rniE 'explain[[:space:]]*(\(|[[:space:]])[^)]*analyze' \
+             --include='*.go' --include='*.sql' --exclude='no_explain_analyze_test.go' . ; then
+            echo "::error::EXPLAIN ANALYZE found — pgbot must never execute inspected queries"
+            exit 1
+          fi
+          echo "clean: no EXPLAIN ANALYZE"
+
+  nix:
+    name: nix build
+    # vendorHash changes with every dependency bump, so this job is
+    # informational — a red nix build must not block an otherwise green PR.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - run: nix build .#pgbot
+      # proves the ldflags version stamp reached the packaged binary
+      - run: ./result/bin/pgbot --version | grep -q 'pgbot version 0\.'
+
+  build:
+    name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      # Every target .goreleaser.yaml ships — a release must not be the first
+      # thing that compiles a platform.
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # CGO must stay off so the binary is static (catches a cgo regression from
+      # a new dependency).
+      - run: CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build ./cmd/pgbot
+
+  integration:
+    name: integration PG${{ matrix.pg }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: [14, 15, 16, 17, 18, 19beta1]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: start PostgreSQL ${{ matrix.pg }} (with pg_stat_statements)
+        run: |
+          docker run -d --name pg -p 5432:5432 -e POSTGRES_PASSWORD=pw \
+            postgres:${{ matrix.pg }} -c shared_preload_libraries=pg_stat_statements
+          # TCP check (-h 127.0.0.1), not the default socket: the postgres image's
+          # initdb-phase server is socket-only, so a socket pg_isready can report
+          # ready during init and then the real-server start briefly closes it.
+          # TCP only answers once the real server is up — no shutdown-window race.
+          for i in $(seq 1 60); do docker exec pg pg_isready -U postgres -h 127.0.0.1 -q && break; sleep 1; done
+          docker exec pg psql -U postgres -q \
+            -c "CREATE EXTENSION pg_stat_statements;" \
+            -c "CREATE TABLE people(id serial primary key, email text);" \
+            -c "INSERT INTO people(email) SELECT 'user'||g||'@example.com' FROM generate_series(1,2000) g;" \
+            -c "CREATE ROLE pgbot_ro LOGIN PASSWORD 'ro'; GRANT pg_monitor TO pgbot_ro; GRANT CONNECT ON DATABASE postgres TO pgbot_ro;"
+      - name: run integration suite (full pipeline + PII + rates under load)
+        env:
+          PGBOT_TEST_DSN: postgres://pgbot_ro:ro@127.0.0.1:5432/postgres
+          # Superuser dsn for the doc-verify guard: it creates a small fixture
+          # (tables + pgstattuple) the read-only role can't, then runs every
+          # "How to verify" query from the catalogue read-only (PG18 job only).
+          PGBOT_TEST_SUPERUSER_DSN: postgres://postgres:pw@127.0.0.1:5432/postgres
+          PGBOT_TEST_LOAD: "1"
+        run: |
+          # Concurrent write load so the stats-caching / rate guards are meaningful.
+          # Client transactions (pgbench), not a DO loop: since PG15 a backend
+          # flushes its counters to pg_stat_database only when it goes idle, so
+          # commits inside one long DO block stay invisible until it ends, and the
+          # guard would only have seen pgbot's own traffic.
+          echo "INSERT INTO people(email) VALUES ('l@example.com');" \
+            | docker exec -i pg pgbench -U postgres -n -c 2 -T 180 -f /dev/stdin postgres >/dev/null &
+          go test ./internal/collect/ -run Integration -v
+          # cmd/pgbot integration: the advisor's read-only-blocks-a-write proof and
+          # the MCP explain_plan/schema_of tools, against the same server.
+          go test ./cmd/pgbot/ -run Integration -v
+      - name: degrade cleanly without pg_stat_statements
+        run: |
+          docker rm -f pg
+          docker run -d --name pg2 -p 5433:5432 -e POSTGRES_PASSWORD=pw postgres:${{ matrix.pg }}
+          for i in $(seq 1 60); do docker exec pg2 pg_isready -U postgres -h 127.0.0.1 -q && break; sleep 1; done
+          docker exec pg2 psql -U postgres -q -c "CREATE TABLE t(id serial primary key);"
+          CGO_ENABLED=0 go build -o pgbot ./cmd/pgbot
+          # a no-pgss run must exit on findings (not error) and mark Queries unavailable
+          ./pgbot inspect "postgres://postgres:pw@127.0.0.1:5433/postgres" --no-store --json \
+            | grep -q '"exactness": "unavailable"' \
+            && echo "queries correctly unavailable" || (echo "::error::no-pgss path broken"; exit 1)
+
+  pooler:
+    name: transaction pooler (rates stay correct)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: PgBouncer transaction mode in front of Postgres
+        run: |
+          docker network create n
+          docker run -d --name pg --network n -e POSTGRES_PASSWORD=pw \
+            postgres:17 -c shared_preload_libraries=pg_stat_statements
+          # TCP check (-h 127.0.0.1), not the default socket: the postgres image's
+          # initdb-phase server is socket-only, so a socket pg_isready can report
+          # ready during init and then the real-server start briefly closes it.
+          # TCP only answers once the real server is up — no shutdown-window race.
+          for i in $(seq 1 60); do docker exec pg pg_isready -U postgres -h 127.0.0.1 -q && break; sleep 1; done
+          docker exec pg psql -U postgres -q -c "CREATE TABLE t(id serial primary key, note text);"
+          # publish on 6543 so the known-endpoint detection also fires
+          docker run -d --name pgb --network n -p 6543:5432 \
+            -e DB_HOST=pg -e DB_USER=postgres -e DB_PASSWORD=pw -e DB_NAME=postgres \
+            -e POOL_MODE=transaction -e AUTH_TYPE=scram-sha-256 edoburu/pgbouncer
+          sleep 5
+      - name: assert rates stay correct behind the pooler
+        env:
+          PGBOT_POOLER_DSN: postgres://postgres:pw@127.0.0.1:6543/postgres
+          PGBOT_TEST_LOAD: "1"
+        run: |
+          # client transactions, visible in pg_stat_database (see the integration job)
+          echo "INSERT INTO t(note) VALUES ('x');" \
+            | docker exec -i pg pgbench -U postgres -n -c 2 -T 120 -f /dev/stdin postgres >/dev/null &
+          go test ./internal/collect/ -run Integration_poolerRatesStayCorrect -v
+
+  npm:
+    name: npm wrapper (packaging)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.x
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # DoD 9: exit codes and signals pass through the wrapper unmodified — a 2
+      # (critical) arrives as 2. Pure-Node, no DB.
+      - name: wrapper unit tests
+        run: node --test npm/test/*.test.mjs
+      # DoD 10: `npm install --ignore-scripts` produces a working install. Builds
+      # the real binary, packs the wrapper + this platform's package, installs the
+      # tarballs with --ignore-scripts, and runs `pgbot --version` through it —
+      # once per package manager, so a wrapper change that only breaks bun fails
+      # here rather than for a bunx user.
+      - name: pack + --ignore-scripts install smoke (npm, bun)
+        run: bash npm/test/pack-smoke.sh npm bun

@@ -1,0 +1,763 @@
+# Changelog
+
+All notable changes to pgbot are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/), and the project aims for
+[Semantic Versioning](https://semver.org/). The `--json` contract is versioned
+separately by `model.SchemaVersion` (currently 1.5.0).
+
+## [Unreleased]
+
+### Changed
+- **PostgreSQL driver: pgx → [pgGo](https://github.com/pgrundev/pggo).** pgbot
+  now talks to PostgreSQL through pgGo, a dependency-free wire-protocol client
+  (standard library only). Output is unchanged apart from pgbot's own
+  footprint in the counters it samples (below) — verified by running the pgx
+  and pgGo builds side by side against PostgreSQL 16–19, a streaming standby,
+  PgBouncer (transaction mode) and PgDog. Read-only
+  guarantees are unchanged: the same session pins and `READ ONLY` transactions,
+  enforced by PostgreSQL. Effects you may notice:
+  - The binary is ~5 MB smaller (4 fewer modules: pgx, pgpassfile,
+    pgservicefile, puddle); runs need fewer round trips (`BEGIN` is pipelined
+    with each collector's first query).
+  - pgbot's own traffic is less visible in `pg_stat_database` during the
+    sample window, so throughput on a near-idle database is reported closer to
+    the truth (pgx builds counted ~15–20 tps of pgbot's own commits; with a
+    rate-limited 200 tps workload pgx reported ~220, pgGo ~200). On an idle
+    database, cache hit and rollbacks now show `—` (nothing measured) where the
+    pgx build graded pgbot's own reads.
+  - Behind a transaction pooler no protocol fallback is needed any more: pgGo
+    only uses unnamed statements, parsed and executed within one sync. The
+    prepared-statement probe still runs and still counts as a pooler signal.
+- **Gauge strip in the default `inspect` view.** Four vital signs sit right
+  under the header — cache hit, lock wait (naming the culprit query when
+  sessions are blocked), rollbacks, and idle index bytes as a share of the
+  database — each a bar, a value and a one-word status driven by the finding
+  that grades the same signal. Signals pgbot could not measure render dim
+  with `—` and say why (`thin sample`, `window < 15m`, `not measurable`). The
+  GOOD bullet list becomes a compact `checked · queries · vacuum · …` line of
+  the subsystems that were collected and produced no finding. Score, the
+  CRITICAL/WARNING/NOTE bullets, `--full`, `--json`, MCP, SARIF and the HTML
+  report are unchanged. The footer's ask hint now reads
+  `pgbot ask "why is it slow?"`.
+
+### Added
+- **`replica_identity_missing` finding.** A table published for `UPDATE` or
+  `DELETE` with no usable replica identity — `DEFAULT` and no primary key,
+  `NOTHING`, or `USING INDEX` whose index is gone — makes Postgres reject the
+  write itself (`cannot update table … because it does not have a replica
+  identity and publishes updates`). Reads and INSERTs keep working, so the
+  failure lands on the first UPDATE after a migration rather than at deploy
+  time. Read from `pg_publication` and `pg_class`, so it is `schema` scope and
+  runs under `--profile=schema` / `pgbot lint` on an empty CI database.
+  Insert-only publications need no identity and are not reported. New
+  `replica_identity` section in `--json`; `SchemaVersion` → **1.5.0** (additive;
+  a 1.4.0 consumer parses it unchanged).
+- **`collation_version_mismatch` finding** (PG15+). The collation library
+  (libc or ICU) that defines text sort order changed version under the data —
+  an OS upgrade, a new base image, a restore onto a different host — so every
+  btree over text sorted by it may be silently out of order: lookups miss rows
+  and `UNIQUE` stops catching duplicates. Read from `pg_database.datcollversion`
+  and `pg_collation.collversion` against the library's actual version; critical
+  when it is the database default, warn for a named collation. The remediation
+  is REINDEX **then** `REFRESH COLLATION VERSION`, in that order — the caveat
+  says why. New `collation` section in `--json`; `SchemaVersion` → **1.3.0**
+  (additive; a 1.2.0 consumer parses it unchanged).
+- **`pgbot inspect --all-instances` — every Aurora writer and reader behind one
+  endpoint (experimental)** (#23). An Aurora cluster endpoint stands for several
+  instances; this discovers the members with `aurora_replica_status()`, derives
+  each instance endpoint from the cluster endpoint's DNS name (custom domains
+  are followed through their CNAME), verifies each derived endpoint reached the
+  member it names with `aurora_db_instance_identifier()` before collecting, and
+  inspects every one through the existing fan-out — writer first, then readers,
+  composing with `--all-databases`. SQL and DNS only: no AWS credentials, CLI,
+  SDK, or API. An RDS Proxy endpoint, a non-RDS name, or an unreachable member
+  fails loudly rather than guessing; missing members mean partial coverage and
+  exit 3. Text output banners each target, JSON carries `server.instance` and
+  `server.instance_role`, SARIF/JUnit objects are prefixed `instance:<id>/`, and
+  Prometheus series gain `instance` and `role` labels. `SchemaVersion` →
+  **1.4.0** (additive; a 1.3.0 consumer parses it unchanged). Needs validation on a
+  real cluster — please report the cluster endpoint shape if derivation fails.
+- **`$PGSERVICE` as a connection fallback** (#25). When no connection string
+  is passed and neither `$DATABASE_URL` nor `$PGBOT_DATABASE_URL` is set,
+  pgbot now checks `$PGSERVICE` too, so a
+  [connection service file](https://www.postgresql.org/docs/current/libpq-pgservice.html)
+  alone is enough to pick a database. The driver's `ParseConfig` already reads
+  `PGSERVICEFILE` (or the libpq default path); this just stops pgbot from
+  erroring out before the driver gets a chance to.
+- **AWS Bedrock Mantle as an `explain` / `ask` provider** (#35, contributed by
+  @edwardsb). `PGBOT_AI_PROVIDER=bedrock` (alias `mantle`) routes `openai.*`
+  models through the Responses API and `anthropic.*` models through the
+  Messages API on `bedrock-mantle.<region>.api.aws`; the default is
+  `openai.gpt-5.6-terra`. Authenticate with `AWS_BEARER_TOKEN_BEDROCK` or with
+  `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN`, from
+  which pgbot mints Bedrock's short-lived bearer token itself — a hundred lines
+  of SigV4 over the standard library, pinned to AWS's reference generator by a
+  golden-signature test. No AWS SDK, no config files, no STS or metadata calls:
+  a profile or SSO login is exported with
+  `eval "$(aws configure export-credentials --format env)"`. Access keys only
+  ever go to the Mantle host for the configured region, and Bedrock requests
+  never follow redirects.
+- **Requesty as an `explain` / `ask` provider.** `PGBOT_AI_PROVIDER=requesty`
+  sends `/chat/completions` to `https://router.requesty.ai/v1` with
+  `REQUESTY_API_KEY` (or `PGBOT_AI_API_KEY`), the same way the `openrouter`
+  alias works. It is never auto-detected, and it never picks up an OpenAI or
+  OpenRouter key.
+- **Opper as an `explain` / `ask` provider.** `PGBOT_AI_PROVIDER=opper` sends
+  `/chat/completions` to `https://api.opper.ai/v3/compat` with `OPPER_API_KEY`
+  (or `PGBOT_AI_API_KEY`), the same way the `requesty` alias works. It is
+  never auto-detected, and it never picks up an OpenAI or OpenRouter key.
+
+### Changed
+- `model.ServerInfo` gains `instance` and `instance_role` (additive). JSON
+  contract `SchemaVersion` → **1.3.0**; a 1.2.0 consumer still parses 1.3.0
+  output unchanged.
+### Fixed
+- **Connection-string redaction now covers `?password=` in URL form.** libpq
+  accepts the password as a query parameter as well as in the userinfo; the
+  redactor only handled the latter, so `postgres://user@host/db?password=…`
+  passed through `RedactConnString` untouched. Every caller today hands it an
+  error message that pgx has already redacted, so this closes a gap in the
+  privacy boundary rather than a known leak.
+
+## [0.8.1] - 2026-09-06
+
+### Fixed
+- **Release signing under cosign v3.** The v0.8.0 tag's release run failed at
+  the signing step and published nothing: cosign-installer v4 (#19) installs
+  cosign v3, which ignores `--output-signature` / `--output-certificate` and
+  requires a bundle path, so the transitional detached `.sig`/`.pem` signing
+  entry failed. Releases now ship the `checksums.txt.cosign.bundle` only, which
+  is what `install.sh`, the README, and the release smoke job already verify
+  with `cosign verify-blob --bundle`. 0.8.1 is the 0.8.0 tree plus this fix.
+
+## [0.8.0] - 2026-09-06
+
+### Added
+- **Bring your own model: Gemini, Anthropic, OpenAI, xAI, or any
+  OpenAI-compatible endpoint for `explain` and `ask`** (#29, contributed by
+  @edwardsb). Pick one with `PGBOT_AI_PROVIDER` or let pgbot detect it from
+  whichever key is set (OpenAI first, as before); `PGBOT_AI_MODEL`,
+  `PGBOT_AI_BASE_URL`, `PGBOT_AI_API_KEY`, and `PGBOT_AI_REASONING_EFFORT`
+  override the rest, and the existing `PGBOT_OPENAI_*` / `PGBOT_GEMINI_*`
+  settings keep working. Anthropic speaks `/v1/messages` (default
+  `claude-opus-5`), xAI the Responses API (default `grok-4.6`, sent with
+  `store: false`); OpenRouter, Groq, Together, DeepSeek, Mistral, Ollama, vLLM,
+  and LM Studio go through `/chat/completions`. The consent prompt now names
+  the provider, host, and model; a local endpoint is identified as local and
+  needs no confirmation. Keys still come only from the environment, and every
+  provider is plain `net/http` — no new dependencies. The model call gets its
+  own three-minute budget instead of what is left of collection's.
+- **`--ssh-tunnel [user@]host[:port]` — reach a database through an SSH jump
+  host** (#28, contributed by @DiegoDAF). A global flag (or `$PGBOT_SSH_TUNNEL`)
+  for the RDS-in-a-VPC / Postgres-behind-a-bastion case. It is installed as
+  pgx's dialer rather than an `ssh -L` forward, so the DSN keeps naming the
+  real host: `sslmode=verify-full` and `.pgpass` still match on it, and no
+  local port is left open. How the jump host is reached comes from your own
+  `ssh_config` (`HostName`, `Port`, `User`, `IdentityFile`, `IdentitiesOnly`,
+  `IdentityAgent`, `StrictHostKeyChecking`, `UserKnownHostsFile`); the agent is
+  offered before any key on disk; one SSH connection serves the whole run and
+  is re-dialed once if the transport dies under a long-lived `mcp` process. A
+  host key accepted on first sight is recorded in your known_hosts, as `ssh`
+  does, so a later change is refused. Two new pure-Go dependencies:
+  `github.com/kevinburke/ssh_config` and `golang.org/x/crypto`.
+
+### Changed
+- **The OpenAI default model is now `gpt-5.6-terra`** (was `gpt-4o-mini`), sent
+  as a reasoning model with `reasoning_effort` `xhigh` and a 32k completion
+  cap. An existing setup with only `OPENAI_API_KEY` picks this up without any
+  other change — set `PGBOT_OPENAI_MODEL` (or `PGBOT_AI_MODEL`) to keep the old
+  model, or `PGBOT_AI_REASONING_EFFORT=low` to keep the cost down.
+- **Builds with Go 1.27.** `golang.org/x/crypto` v0.56.0 — the first release
+  clearing the advisories `govulncheck` reports against the SSH package — needs
+  Go 1.26 or newer, so `go.mod` moves from 1.25.13 to `go 1.27` with
+  `toolchain go1.27.1`. Developers and CI get exactly 1.27.1 through the
+  default `GOTOOLCHAIN=auto`; a packager with any 1.27.x can build. The release
+  pipeline already reads the version from `go.mod`.
+
+### Fixed
+- **`pgbot tune --timeout`** (#26, #30, contributed by @YIKUAIBANZI). `tune` ran
+  under a fixed 30s budget with no flag to raise it, so a slow or remote database
+  died with `collect: context deadline exceeded`; it now takes the same
+  `--timeout` (default 30s) as the other collection commands. The shared
+  `gather` path also forwards that budget to the collector, which previously
+  kept its own 20s+interval cap regardless — so `--timeout` above ~21s on
+  `indexes`, `queries`, `tables`, and `vacuum` now actually extends the run.
+
+## [0.7.2] - 2026-09-01
+
+### Added
+- **`pgbot logs` reads the pgAudit trail as its own level.** pgAudit writes
+  its audit records into the server log at LOG severity with an `AUDIT:`
+  prefix; they now classify as level `audit` — `pgbot logs --level audit`
+  is the audit-trail reader, completing the pgaudit story next to the
+  existing posture findings. Scrubbed in `--json` like everything else.
+- **`pgbot report` — the full inspection as one self-contained HTML page.**
+  The same collection pipeline as `inspect` (a baseline snapshot is stored as
+  usual), rendered for a browser: health score, findings ordered by severity
+  with evidence, remediation, and caveats inline, top queries with shares,
+  largest tables, unused/redundant indexes and unindexed FKs, the wait
+  profile, and non-default settings — with click-to-sort columns. The Context
+  is PII-free by construction and the page makes zero external requests
+  (pinned by test), so the report is safe to attach to a ticket.
+- **`pgbot activity` — pg_stat_activity for humans.** The live client
+  backends: PID, user@db, app, state (colored), current wait, transaction and
+  query ages, and the scrubbed SQL. Plain idle sessions are summarized rather
+  than listed (`--all` lists them); pgbot's own connections are excluded by
+  PID; `--json` emits one scrubbed object per session.
+- **`pgbot erd --layout row`** — left-to-right diagram: parents in the left
+  column, children to the right, edges drawn as dashed ascii (`----`, `|`,
+  `+`, `<` into the parent) leaving from each FK's own row.
+- **`pgbot erd --html`** — a self-contained interactive diagram file: inline
+  SVG (dashed edges, arrowheads, pgbot's terminal palette) with inline
+  pan/zoom script, zero external requests — the schema never leaves the file.
+- **`pgbot erd` shows indexes and database info.** Every renderer opens with
+  the database header (name, server version, table/FK/index counts, size),
+  and each table box gains an index section below a divider — non-primary
+  indexes with method, columns, partial-index predicates, and UNIQUE marked.
+
+## [0.7.1] - 2026-09-01
+
+### Added
+- **`pgbot erd` — the schema as an ER diagram, in the terminal.** Box-drawn
+  tables with PK/FK markers and a crow's-foot relationship forest (multi-parent
+  tables cross-linked, cycles handled), introspected from `pg_catalog` —
+  structure only, never data, nothing beyond CONNECT required, and the
+  connection string never leaves the machine. Every foreign key is
+  ROUTED as a drawn edge — corner at the FK row, a vertical lane in the left
+  gutter, crossings as ┼, an arrowhead into the parent — with lane reuse and a
+  cap so huge schemas degrade to the textual markers. `--mermaid` emits an
+  erDiagram pasteable into GitHub or mermaid.live; `--schema` narrows the scope.
+
+## [0.7.0] - 2026-09-01
+
+### Added
+- **`pgbot why --duration 10s` — live wait diagnosis on top of the offline
+  history engine.** `why` without the flag is unchanged (offline, no
+  connection). With it, the waits study becomes a live evidence source
+  classified through a deterministic first-match cause table — lock contention
+  (only with a sustained named blocker), lock churn (a possibility, never a
+  diagnosis), storage/WAL wait (IO alone never claims a missing index),
+  client/application wait (explicitly not a PostgreSQL problem), CPU
+  saturation, mixed — behind two gates that outrank every diagnosis:
+  insufficient evidence (thin sample, partial visibility, poor coverage) and
+  not-significant (waits on near-zero activity are noise). Wait-rollup history
+  corroborates by labeled ratio ("Lock waits 8× vs the previous 24h"), never
+  blended into live percentages, and adds confidence. The report gains an
+  additive `live` object (`why_schema_version` 1.0.0 → 1.1.0); wait counts
+  fold into the store so each run sharpens the next.
+
+- **`pgbot waits` — sampled wait analysis with evidence-gated blockers
+  (experimental).** Samples `pg_stat_activity` at up to 20 Hz and the lock
+  graph at 1 Hz for a bounded window (default 10s, `--duration`, `--pid`,
+  `--group event|query|session`, `--json`): average active sessions, DB time
+  by wait class, top wait events, waiting sessions, and blockers — a holder is
+  named only when observed across ≥3 lock snapshots (or 2 with the victim's
+  own samples majority-Lock); anything less is transient, never blamed. All
+  shares are labeled sampled; the only exact numbers are ages read from the
+  server; lock contention is explicitly reported as NOT evidence of a missing
+  index. Query text passes the literal scrubber; `--json` is a separately
+  versioned document (`waits_schema_version 1.0.0`). Wait counts fold into the
+  existing `wait_rollups` store by default (`--no-store` opts out). Reuses the
+  hardened inspect ASH sampler — poll budgets, skip-while-in-flight,
+  idle-vs-broken accounting — with an extended column set.
+
+## [0.6.3] - 2026-08-31
+
+### Added
+- **`pgbot init` now covers the `pgbot logs` grant** — commented out by
+  default (it is one privilege beyond pg_monitor, so opting in stays a
+  visible act), emitted active with `pgbot init --logs`. The statement text
+  is shared with the runtime's missing-grant hint, so the two can never
+  drift apart.
+
+## [0.6.2] - 2026-08-31
+
+### Fixed
+- **`install.sh` warns when an older pgbot earlier in PATH shadows the fresh
+  install** (a brew or `go install` copy): the installer printed the new
+  version while the shell kept running the old binary, so a just-shipped
+  command looked "missing" minutes after release. The warning names the
+  shadowing binary, its version, and the fix. (The script is served from
+  `main`, so this was live before the tag; the release anchors it.)
+
+## [0.6.1] - 2026-08-31
+
+### Added
+- **`pgbot logs --follow` / `-f`** — a true alias for `--live`, bound to the
+  same variable, because `tail -f` muscle memory deserves to work.
+
+## [0.6.0] - 2026-08-31
+
+### Added
+- **`pgbot logs` — the server log over SQL, typed and self-aware
+  (experimental).** `pgbot logs` prints the newest 100 entries (`--last N` to
+  change, `--live` to keep following), read through
+  `pg_current_logfile()` + `pg_read_binary_file()` — no agent, no sidecar, no
+  file access. Entries are parsed from whichever format the server writes
+  (jsonlog preferred, then csvlog, then stderr with any `log_line_prefix`) and
+  typed `query` / `info` / `warn` / `error` (`--level` filters). Rotation is
+  followed; `--json` emits one scrubbed object per entry (the machine
+  contract — literals never leave the log). pgbot filters its own footprint
+  out of the stream — its probe, its polling reads, its connection lines —
+  because a log tail that reads its own reads is a feedback loop, and
+  `--last 100` means 100 entries you actually wanted. Needs one grant beyond
+  `pg_monitor` (printed exactly when missing); without a log collector
+  (`logging_collector=off`, the Docker default) it says so and points at
+  `docker logs`.
+- **PgDog poolers are identified behaviorally, never by hostname** (#22). The
+  connect probe now sets the `pgdog.shard` routing hint session-level alongside
+  a control GUC and reads both back: PgDog consumes `pgdog.*` hints instead of
+  forwarding them, so a vanished hint with an intact control can only be PgDog
+  — on any hostname and port (verified against PgDog v0.1.54). The control
+  keeps a PgBouncer backend switch from ever reading as a false PgDog.
+
+### Fixed
+- **Hosts containing `-pooler` are no longer labeled "a Neon pooled
+  endpoint" unless they are on Neon's own domain** (#22). PgDog and
+  self-hosted poolers reuse the `-pooler` naming convention; those endpoints
+  still count as a pooler signal but now carry the generic label.
+
+## [0.5.1] - 2026-08-24
+
+### Fixed
+- **`pgbot why` polish from the first real-world runs.** Sub-millisecond means
+  no longer render as "0ms → 0ms" on a real slowdown (precision now scales
+  with magnitude: 0.04ms → 0.39ms) and tiny per-second rates keep their
+  significant digits; when the store holds history older than the window,
+  the too-few-snapshots message says how many more exist and names the
+  `--window` widening; and the pick-one database listing carries server
+  version, provider, and recency, so six databases all named "postgres"
+  are tellable apart (snapshots deliberately store no host).
+- **The recurring Windows npx-smoke false alarm was npx cache poisoning, not
+  slow propagation.** A first attempt that runs before `@pgbot/win32-x64` has
+  propagated caches the wrapper WITHOUT its platform optionalDependency, and
+  every retry silently reuses that poisoned tree — which is how the
+  0.4.2/0.4.3/0.5.0 Windows smokes stayed red for their whole retry budget
+  while the registry was verifiably fine. The smoke job now gives each attempt
+  a virgin npm cache, and the wrapper's no-binary error tells real users who
+  hit the same trap how to retry with a fresh cache.
+
+## [0.5.0] - 2026-08-24
+
+### Added
+- **`pgbot why` — deterministic root-cause chains from baseline history.** The
+  correlation feature the roadmap promised: per-object time series over the
+  stored snapshots (each `inspect` adds one), sustained-shift onset detection,
+  and explicit mechanism rules connecting a symptom to its cause — *"query 42
+  slowed 3.2× — mean 8ms → 26ms per call · because seq scans on public.orders
+  surged 0.1 → 50 per second · after the table grew 18%"* — with the numbers
+  and onset times on every hop. v1 ships the query-slowdown rule: interval
+  mean (ΔTotalMS/ΔCalls, honest where pg_stat_statements' lifetime mean
+  dilutes fresh regressions) mechanized by a seq-scan surge on a referenced
+  table, with table-growth and index-dropped antecedents. Temporal discipline
+  is a hard gate (a cause whose onset follows the symptom never chains);
+  confidence comes from onset alignment, antecedents, and magnitude, and
+  anything below 0.5 is worded as a possibility. Fully offline, like `diff`;
+  needs ≥3 snapshots and says exactly what to run when it has fewer. `--json`
+  emits a separately versioned report (`why_schema_version: 1.0.0`); the MCP
+  server gains a matching `why` tool. Counter resets split series rather than
+  fabricating rates; missing top-N entries are gaps, never interpolated. The
+  output explains itself: what was analyzed ("analyzed N queries and M
+  tables"), how many regressions were found vs shown ("showing the 5 worst of
+  7"), and a how-to-read legend; `pgbot why 10` (or `--max-chains`) widens the
+  default 5, and the JSON carries the same scope fields
+  (`analyzed_queries`/`analyzed_tables`/`regressions_found`).
+- **pgaudit posture findings.** When the pgaudit extension is installed, pgbot
+  grades its configuration (pgbot cannot read the audit trail itself — it lives
+  in the server log — but every knob that decides whether the trail exists is
+  visible in pg_settings): `pgaudit_silent` (warn) — installed but
+  `pgaudit.log` selects no classes, the compliance foot-gun where the audit
+  trail everyone relies on does not exist; `pgaudit_logs_parameters` (warn,
+  risk) — `pgaudit.log_parameter=on` writes bind parameters (passwords, PII)
+  into plaintext server logs; `pgaudit_double_logging` (info) — pgaudit session
+  logging alongside `log_statement=all` records every statement twice. Each
+  ships with a catalogue page (`pgbot explain-finding pgaudit_silent`),
+  suppression support, and cluster-wide dedupe under `--all-databases`.
+
+## [0.4.3] - 2026-08-22
+
+### Fixed
+- **Eight audit fixes (#20, #21), contributed by @10xdev4u-alt.** The baseline
+  store's 100 MB cap now actually reclaims space (DELETE never shrinks a
+  WAL-mode SQLite file; the promised VACUUM never ran, so every run evicted
+  another 10% of history); JUnit output no longer fails the test pane on
+  `Preexisting` findings the exit code passes under `--fail-on-new`; Prometheus
+  label values are escaped exactly once (a database name with a quote or
+  backslash was double-escaped, changing the exposition bytes); the MCP
+  `diagnose` prompt no longer renders the DSN — password included — into
+  prompt text; `archiving_stalled` honors `archive_timeout` (the value is
+  unit-suffixed — `5min`, `1h` — so the old `Atoi` parse was a dead branch and
+  the threshold stuck at the 1h floor, firing false criticals);
+  `checksum_failures` is reported once under `--all-databases` while
+  `work_mem_low` correctly stays per-database; `install.sh` pins the cosign
+  signing identity to the release workflow instead of accepting any workflow
+  in the repo; finding text is truncated by rune, never mid-UTF-8-sequence.
+- **Review follow-ups on the above.** Cluster-wide dedupe keeps the first
+  occurrence of a finding instead of assuming the first database carries it
+  (a permissions failure on database one could erase a live corruption
+  report); the store VACUUMs before any eviction (an upgraded, free-page-bloated
+  file no longer costs the snapshot just saved), evicts in one sized pass
+  instead of up to twenty full-file rewrites, never deletes the last snapshot,
+  and treats VACUUM contention as best-effort so a parallel `--all-databases`
+  run can't lose its schema/events writes; the `diagnose` prompt drops its
+  `connection_string` argument entirely (prompt arguments never reach the
+  model — the rendered text was the only carrier, and that was the leak) and
+  directs agents to the server's `DATABASE_URL`; the cosign identity regexes in
+  `install.sh`, `release.yml`, and the README anchor the workflow filename
+  (`release.yml@`) so a similarly-prefixed workflow can't satisfy them; the
+  Prometheus exposition gains a `preexisting` label and stops counting
+  preexisting findings in `pgbot_findings_total`, matching the exit code; the
+  `--full` findings view marks preexisting findings and keeps them out of the
+  headline counts; the index advisor's query line truncates by rune.
+
+## [0.4.2] - 2026-08-21
+
+### Added
+- **`uses: pgrundev/pgbot@v1` now actually resolves.** The composite GitHub
+  Action moved from `.github/actions/pgbot/` to the repository root — the
+  location the `owner/repo@tag` syntax (and the Marketplace) requires — and a
+  floating `v1` tag tracks it. `release.yml` now triggers only on full
+  `vX.Y.Z` tags so the major tag can never cut a release by accident.
+- **`pgbot init` — guided setup that never touches the database.** Generates
+  the canonical read-only role SQL (`CREATE ROLE … LOGIN`, `GRANT pg_monitor`,
+  `GRANT CONNECT`) plus the provider-appropriate `pg_stat_statements` step —
+  executable where the extension is preloaded (Supabase, Neon), commented
+  instructions where preload comes first (RDS, Aurora, Cloud SQL, Azure,
+  self-hosted). With a connection string it detects the database name and
+  provider; the output is pipe-safe by contract (every line is a statement, a
+  `--` comment, or blank), so `pgbot init | psql "$ADMIN_DSN"` is the intended
+  path — pgbot itself executes nothing. `pgbot init --verify` connects as the
+  monitoring role and checks the prerequisites (pg_monitor critical,
+  pg_stat_statements warn with the provider fix, standby per-node-counter
+  note), exiting non-zero when the critical one is missing.
+
+### Security
+- **Every third-party GitHub Action is pinned to a commit SHA** — CI, the
+  release pipeline, and the published composite action (whose
+  `upload-sarif` step runs inside end-users' workflows). Dependabot maintains
+  the pins and gains a 14-day cooldown for gomod and github-actions version
+  updates (security advisories are not delayed). Contributed by @lpmi-13 (#14).
+
+## [0.4.1] - 2026-08-19
+
+### Fixed
+- **`pg_stat_statements` installed outside `public` was detected but unreadable
+  (#10).** Supabase (and any `CREATE EXTENSION … SCHEMA x`) puts the extension's
+  objects in `extensions`; pgbot's probe saw it in `pg_extension` but every read
+  used the bare relation name, so `queries` came back
+  `unavailable: relation "pg_stat_statements" does not exist` while the server
+  capability list still said `pg_stat_statements` — a silent loss of the report's
+  highest-value section for a dedicated read-only role whose `search_path` doesn't
+  include the schema. The probe now records the namespace of every installed
+  extension (`Capabilities.ExtensionSchemas`) and the fixed, allowlisted object
+  names — the `pg_stat_statements` view, the `pg_stat_statements(showtext)` SRF,
+  `pg_stat_statements_info`, and hypopg's `hypopg_create_index` /
+  `hypopg_relation_size` / `hypopg_reset` used by `advise` — are addressed
+  schema-qualified and identifier-quoted (`"extensions"."pg_stat_statements"`),
+  independent of `search_path`. When the schema can't be read the bare name is
+  used, i.e. the previous behaviour. Covered by an integration test that
+  relocates the extension and runs the read-only role against it.
+- **`index_invalid` no longer overstates failed-build debris as critical write
+  overhead (#11).** A `CREATE INDEX CONCURRENTLY` that fails during the build
+  (a duplicate key on a unique build, a timeout, a cancelled session) leaves
+  `indisvalid = false, indisready = false` and a 0-byte relation — an index
+  PostgreSQL **ignores on INSERT/UPDATE**. pgbot graded every invalid index
+  `critical` (impact 85) with the blanket claim "still maintained on every write",
+  ranking that debris above live operational problems. The schema fingerprint
+  now carries `indisready`, `indislive`, and `pg_relation_size` for invalid
+  indexes, and each one is classified: `indisready = true` → maintained on every
+  write, never read → **critical** (unchanged); `indisready = false` →
+  failed-build debris, not maintained on writes → **warn** (impact 45) with
+  cleanup guidance ("the index you meant to have does not exist"), never a
+  write-cost claim; `indislive = false` → being dropped → warn. Evidence lines
+  carry the state and size (`… indisready = false: failed-build debris, NOT
+  maintained on writes (0 B)`), the impact estimate says how many are actually
+  maintained, and the finding page's verify query shows both flags. The
+  in-progress-build downgrade (warn, confidence 0.5, do-not-drop guard) is
+  unchanged. Not a JSON contract change: the classification rides on the
+  existing `severity` / `evidence` / `impact` fields.
+- **`brew install pgrundev/tap/pgbot` works (#8).** The README advertised the tap
+  since 0.3.0, but the `pgrundev/homebrew-tap` repository was never created and
+  the release's formula push was gated on a `HOMEBREW_TAP_TOKEN` that was never
+  set — so every release stayed green while the documented install failed with
+  "Repository not found". The tap now exists with a formula for the current
+  release (macOS Intel/Apple Silicon, Linux x86_64/arm64, SHA-256 pinned to the
+  signed release archives), and GoReleaser pushes the regenerated formula on
+  every tag over git+SSH with a **deploy key scoped to the tap repo**
+  (`HOMEBREW_TAP_DEPLOY_KEY`) instead of a personal access token. A new
+  post-release `brew-smoke` job `brew install`s the tag on a fresh macOS runner
+  and **fails the release run** if the formula wasn't published, so this can't
+  silently regress again. Release procedure documented in `docs/release.md`.
+- **`npx pgbot` → `E404` is documented, not a bug to chase (#9).** npm's
+  name-similarity policy blocks creating the bare `pgbot` package (too close to
+  `got`); the wrapper has been `@pgbot/cli` since 0.3.3. The README now says so
+  explicitly next to the npx row, and the 0.3.0 release notes that advertised
+  `npx pgbot` carry a correction.
+
+### Changed
+- Updated pgx to v5.10.0; GitHub Actions bumped (`actions/setup-go` v7,
+  `docker/login-action` and `docker/setup-buildx-action` v4). No behaviour
+  change; `govulncheck` still reports no vulnerabilities.
+
+## [0.4.0] - 2026-08-19
+
+### Added
+- **Index/code correlation (`pgbot indexes --correlate`, MCP `index_code_correlation`).**
+  pgbot grades every unused / redundant / invalid index by how the drop can be
+  *proven*, and hands an agent exactly what to search for — without ever reading
+  your repository:
+  - `catalog_proven` — invalid or redundant/duplicate; provable from the catalog
+    alone, no code check, no stats-window caveat.
+  - `needs_code_check` — a zero-scan plain btree over bare columns. pgbot emits the
+    identifiers to grep in every case convention (camelCase, snake_case,
+    PascalCase, CONSTANT_CASE) plus the load-bearing instruction: search *filter*
+    positions only (WHERE / JOIN / ORDER BY / GROUP BY / ORM filters), never SELECT
+    lists — and how to read a hit vs. a miss.
+  - `inconclusive` — GIN/GiST/BRIN, expression, partial, or a cold window. These
+    can serve a query shape that simply hasn't run, so they keep "do not DROP INDEX
+    on this evidence" and are **never** promoted to actionable by an empty code
+    search. pgbot never reads the repo and never drops anything.
+- **Verdict write-back (MCP `record_index_verdict`).** An agent records what its
+  repo search found (`found_in_code` / `not_found_in_code` / `inconclusive`),
+  stored locally per database. On a later run the same still-unused index carries
+  the prior verdict forward and notes when the zero-scan window has since grown —
+  a one-off grep becomes compounding evidence. New `index_verdicts` store table
+  only; no existing table changes.
+- **Replica-identity indexes are never reported as unused.** A `REPLICA IDENTITY
+  USING INDEX` index shows zero scans on the primary but dropping it breaks logical
+  replication and UPDATE/DELETE row identity — now excluded alongside PK / unique /
+  exclusion / FK-backing indexes.
+- **Destructive-action guards are now structured and guaranteed (`finding.safety`).**
+  Every finding whose remediation involves a destructive or irreversible action
+  (DROP INDEX, VACUUM FULL, REINDEX, DROP REPLICATION SLOT, a table rewrite) now
+  carries machine-actionable guards — `{id, kind: prohibition|precondition, action,
+  text, verify}` — instead of leaving the warning to free-form prose a summarizing
+  model could drop. They are emitted deterministically in code and guaranteed in
+  `--json`, SARIF, the MCP payloads, and both terminal views. Two guards that
+  previously existed **only** in docs pages are now on the finding itself: the
+  wraparound "don't VACUUM FULL / don't consume XIDs" guard, and the "don't drop a
+  replication slot a live standby still depends on" guard (whose remediation no
+  longer nudges toward the drop before the check). `pgbot ask` / `explain` reassert
+  these guards from code, after the model's text, so the model cannot omit them. A
+  build-failing regression test fails CI if a destructive remediation ships without
+  a guard. The guards are also carried by SARIF, JUnit (`<failure>` text), and a
+  Prometheus `destructive="true"` label; a test AST-scans the render package and
+  fails the build if a new output surface ships without carrying them. **For a
+  database with a destructive finding, the default and `--full` terminal views now
+  add a `⚠` guard line — clean databases are byte-identical.**
+- **Verdict strengthening is bounded (index/code correlation).** A stored code
+  search plus a growing window is the one place confidence could rise on its own,
+  so: a verdict older than the current stats window is marked **stale** (`stale`,
+  `age_days`), its age is stated in output ("code check is 47 days old — the
+  repository may have changed since"), and a stale verdict never strengthens. The
+  strengthened wording reads as corroboration, never authorization (the phrases
+  "safe to drop" / "confirmed unused" are never generated), and the `precondition`
+  guard persists through any verdict. An `inconclusive` index is never promoted by
+  any verdict at any window length. The `if_not_found` caveat now always names
+  monthly/quarterly/annual jobs a long window still can't see.
+
+### Changed
+- `model.IndexStat` gains `columns`, `method`, `unique`, and `primary` (additive).
+  JSON contract `SchemaVersion` → **1.2.0**; a 1.1.0 consumer still parses 1.2.0
+  output unchanged.
+
+## [0.3.3] - 2026-08-18
+
+### Changed
+- **The npm wrapper is published as `@pgbot/cli`, not `pgbot`.** npm's package-name
+  similarity policy blocks the bare name `pgbot` from being created (too close to
+  the existing `got`/`hubot` packages), which failed 0.3.2's publish after the six
+  platform packages had already gone up. The wrapper now uses the scoped name we
+  own: install with `npx @pgbot/cli inspect "$DATABASE_URL"` or
+  `npm i -g @pgbot/cli`. Nothing else changes — the installed command is still
+  `pgbot`, the six `@pgbot/<os>-<arch>` binary packages are unchanged, and the
+  Homebrew formula, `install.sh`, Docker image, and `go install` path are
+  unaffected.
+
+## [0.3.2] - 2026-08-18
+
+### Fixed
+- Re-cut of 0.3.1 to publish the npm packages — 0.3.1's npm step failed because a
+  CI publish needs a 2FA-bypass/automation token. No code changes versus 0.3.1
+  (the binaries, Docker image, and signatures are identical). npm is now live:
+  `npx @pgbot/cli inspect "$DATABASE_URL"`.
+
+## [0.3.1] - 2026-08-18
+
+### Fixed
+- **pgbot no longer measures its own footprint as the database's** (from external
+  PR #1 by @mishafyi, measured against a real remote PG18). Several places where
+  the read path counted, timed, or reported pgbot's own sessions and session pins:
+  - Settings reported pgbot's own session pins (`statement_timeout=15s`, etc.) as
+    the server's non-default parameters; now reads the server's real values via a
+    transaction-local unpin.
+  - Connection count now counts only client backends (not autovacuum/checkpointer/
+    walwriter/IO workers), and never pgbot's own pool.
+  - The Aurora probe called `aurora_version()`, which errored and booked a rollback
+    on every non-Aurora server each run; now detected from `pg_proc`.
+  - pg_stat_statements reads no longer spill to temp files (transaction-local
+    `work_mem`), so pgbot doesn't report its own `temp_bytes`.
+  - The wait sampler's per-poll deadline was too short for a remote link (every
+    poll timed out); a fixed budget makes the wait profile work over the internet.
+  - `low_cache_hit` requires enough block traffic before grading (a thin sample was
+    flipping the finding and the exit code on noise); `vacuum` grades "due?" against
+    the actual autovacuum knobs and per-table reloptions; the real index count is
+    reported (not the LIMIT-200 scan); idle `Client` waits aren't counted as
+    "waiting"; and TPS excludes pgbot's own transactions.
+
+### Added
+- **npm distribution is live**: `npx @pgbot/cli inspect "$DATABASE_URL"`.
+- Release self-checks: the published image must be anonymously pullable and the
+  cosign signature must verify, both asserted after every release.
+
+## [0.3.0] - 2026-08-17
+
+### Added
+- **Schema profile for CI (`--profile=schema`, `pgbot lint`).** Runs only the
+  findings derivable from the catalog alone — invalid/redundant indexes, unindexed
+  foreign keys, a narrow identity column, autovacuum disabled on a table — so it's
+  safe against an empty, freshly-migrated database, where the full profile would
+  fire `unused_indexes` and `stale_statistics` on everything. A schema report says
+  so in its header and makes no claim about a running database's health.
+- **`--fail-on-new <base.json>`.** Compare a run against a base report and act only
+  on findings the change introduced — new findings, escalated severities, and new
+  rows inside an existing aggregate (a fourth unindexed FK on top of three).
+  Pre-existing findings are marked `preexisting: true` in `--json`, excluded from
+  SARIF and the exit code. This is the migration-PR check: schema profile + base
+  vs. head, only regressions fail. The GitHub Action gains `profile` and
+  `base-report` inputs.
+- **New finding `int4_identity_column`.** A sequence-backed `int4`/`serial` (or
+  identity) column wraps at 2.1 billion — `int2` at 32767 — regardless of its
+  current value, after which the next insert errors. Detected structurally, so it
+  fires on the migration PR while the fix is still free, where the value-based
+  `sequence_exhaustion` cannot. **Note:** this is a new finding ID, so anyone with
+  a `.pgbot.toml` will see it for the first time and it will fire on serial primary
+  keys immediately, some deliberately — scope an `[[ignore]]` to the bounded tables
+  you've reasoned about. Its severity is not yet weighted by production table size
+  (planned), so read it as "will wrap eventually", not "wraps soon".
+- **npm distribution**: `npx @pgbot/cli inspect "$DATABASE_URL"` runs with no prior
+  install. The prebuilt binary ships as a per-platform `optionalDependency`
+  (`@pgbot/<os>-<arch>`), so it lands in the lockfile with an integrity hash,
+  needs no network beyond the registry, and works with `npm ci --ignore-scripts`
+  — no `postinstall` download. The wrapper passes argv, stdio, signals, and the
+  exit code through verbatim, published from the release tag with npm provenance.
+
+### Changed
+- Releases now sign the checksums into a self-contained **cosign bundle**
+  (`checksums.txt.cosign.bundle`), and `install.sh` verifies it with
+  `cosign verify-blob --bundle` — no longer relying on the `--certificate` /
+  `--signature` flags cosign v3 has deprecated. The detached `.sig`/`.pem` are kept
+  this release as a fallback.
+
+### Fixed
+- The GitHub Action's default `version: latest` no longer 404s. `install.sh`
+  treated `latest` as a literal release tag (`pgbot_latest_..._.tar.gz`, a 404);
+  it now resolves `latest` via the releases API like an empty value, and the
+  Action passes an empty version rather than the literal string. The Action also
+  installs into the same `~/.local/bin` it adds to `PATH` instead of disagreeing
+  with the installer's default.
+
+## [0.2.1] - 2026-08-17
+
+### Fixed
+- **pgbot no longer counts its own connections as findings.** pgbot samples
+  through a small connection pool; between short READ ONLY samples each
+  connection is briefly idle in a transaction and holds an xmin. The
+  pg_stat_activity queries excluded only the single querying backend, so sibling
+  pool connections were intermittently counted — a flaky false positive on an
+  otherwise-quiet database (`N session(s) idle in transaction` with nothing
+  actually idle, a self-pinned vacuum horizon, connection-saturation slots pgbot
+  was itself consuming, wait-profile noise, and pgbot listed in its own
+  connection breakdown). Every pg_stat_activity query now excludes all of
+  pgbot's own backend PIDs — captured when the pool warms, so the exclusion is
+  unspoofable (a session can't hide by naming itself `pgbot`) and never affects a
+  user service that happens to be named `pgbot`.
+- Installer: `PGBOT_INSTALL_DIR` is created if it doesn't exist (a custom path
+  like `~/.local/bin`), instead of falling through to an unexpected `sudo`
+  prompt.
+
+### Changed
+- Installer signature verification prefers a self-contained cosign bundle
+  (`checksums.txt.cosign.bundle`) when present, so it no longer depends on the
+  `--certificate` / `--signature` flags cosign v3 has deprecated; it falls back
+  to the detached certificate + signature when no bundle is published.
+
+## [0.2.0] - 2026-08-17
+
+### Added
+- **Index advisor** (`pgbot advise`): missing-index suggestions, each validated
+  by the planner with hypopg — nothing is built. Also the MCP `suggest_indexes`
+  tool. Requires hypopg + pg_stat_statements + PostgreSQL 16+.
+- **Configuration & suppression** (`.pgbot.toml`): per-object `[[ignore]]` rules
+  (with expiry and dead-rule detection), `[severity]` remaps, `[thresholds]`
+  overrides, and `pgbot config check` / `explain` / `init`. Suppression is always
+  visible and never hides a critical or affects the exit code silently.
+- **Findings catalogue**: a `docs/findings/<id>.md` page for every finding, an
+  offline `pgbot explain-finding <id>`, and a by-dimension index.
+- **`pgbot diff`**: compare two baseline snapshots offline, honest about the
+  interval it actually used and about resets/evictions between them.
+- **`pgbot inspect --all-databases`**: sweep every non-template database in the
+  cluster; cluster-wide findings are reported once, not once per database.
+- **Recoverability findings**: WAL archiving health, data-checksum failures,
+  synchronous-replication degradation, replica lag, stale statistics, and
+  autovacuum health.
+- **CI-pipeline output**: `--fail-on=<severity>`, `--format=sarif` (uploads to the
+  GitHub Security tab), `--format=junit`, `--format=prometheus` (node_exporter
+  textfile), and a `pgrundev/pgbot` GitHub Action.
+- **JSON Schema** for the `--json` contracts, published as release assets.
+- **Windows** builds (amd64, arm64) and per-artifact CycloneDX SBOMs.
+
+### Changed
+- **Baseline fingerprints are now per-database within a cluster.** Previously a
+  baseline was keyed on the cluster-wide `system_identifier` alone, so snapshots
+  from different databases on the same server were merged into one series and
+  their deltas were meaningless. The key now includes the database name.
+  **On upgrade:** snapshots written by v0.1.x used the old cluster-wide key and
+  will not match new per-database runs — those series effectively reset. Old
+  snapshots are left in place (the `system_identifier` isn't stored in a snapshot,
+  so they can't be recomputed); pgbot prints a one-time notice on the first run,
+  and you can clear the stale series with `pgbot baselines prune <fingerprint>`.
+- Exit codes are precise and documented: `0` clean · `1` warn · `2` critical ·
+  `3` connection/execution failure · `64` usage error. Suppressed findings never
+  contribute.
+
+### Security
+- **Fixed an information-disclosure defect in `pg_stat_statements` handling.**
+  pg_stat_statements normalizes ordinary queries but stores *utility* statements
+  (e.g. `CREATE USER … PASSWORD`, `ALTER ROLE`, `DO` blocks, `COPY … FROM PROGRAM`)
+  verbatim. The `queries` collector trusted that text as already-parameterized and
+  did not scrub it, so a literal secret in such a statement could appear in a
+  `--json` report and, through `pgbot explain` / `ask`, be sent to an external
+  model. All pg_stat_statements text is now scrubbed before it leaves the process.
+  **If you ran a v0.1.x `queries`/`--json`/`explain`/`ask` and shared the output,
+  treat any credential in a recent utility statement as exposed and rotate it.**
+- **Fixed a dropped redaction marker in query-text scrubbing.** Dollar-quoted
+  spans were replaced using regex Expand semantics, so the `$REDACTED$` marker
+  parsed as an empty capture-group reference: the sensitive span was removed but
+  came out blank instead of marked. Scrubbing now uses literal replacement and is
+  covered by a fuzz test.
+- Updated pgx to v5.9.2 (fixes a SQL-injection advisory), the Go toolchain to
+  1.25.13, and golang.org/x/text to v0.39.0; `govulncheck` now runs in CI and
+  reports no vulnerabilities.
+
+[0.8.1]: https://github.com/pgrundev/pgbot/releases/tag/v0.8.1
+[0.8.0]: https://github.com/pgrundev/pgbot/releases/tag/v0.8.0
+[0.7.2]: https://github.com/pgrundev/pgbot/releases/tag/v0.7.2
+[0.7.1]: https://github.com/pgrundev/pgbot/releases/tag/v0.7.1
+[0.7.0]: https://github.com/pgrundev/pgbot/releases/tag/v0.7.0
+[0.6.3]: https://github.com/pgrundev/pgbot/releases/tag/v0.6.3
+[0.6.2]: https://github.com/pgrundev/pgbot/releases/tag/v0.6.2
+[0.6.1]: https://github.com/pgrundev/pgbot/releases/tag/v0.6.1
+[0.6.0]: https://github.com/pgrundev/pgbot/releases/tag/v0.6.0
+[0.5.1]: https://github.com/pgrundev/pgbot/releases/tag/v0.5.1
+[0.5.0]: https://github.com/pgrundev/pgbot/releases/tag/v0.5.0
+[0.4.3]: https://github.com/pgrundev/pgbot/releases/tag/v0.4.3
+[0.4.2]: https://github.com/pgrundev/pgbot/releases/tag/v0.4.2
+[0.4.1]: https://github.com/pgrundev/pgbot/releases/tag/v0.4.1
+[0.4.0]: https://github.com/pgrundev/pgbot/releases/tag/v0.4.0
+[0.3.3]: https://github.com/pgrundev/pgbot/releases/tag/v0.3.3
+[0.3.2]: https://github.com/pgrundev/pgbot/releases/tag/v0.3.2
+[0.3.1]: https://github.com/pgrundev/pgbot/releases/tag/v0.3.1
+[0.3.0]: https://github.com/pgrundev/pgbot/releases/tag/v0.3.0
+[0.2.1]: https://github.com/pgrundev/pgbot/releases/tag/v0.2.1
+[0.2.0]: https://github.com/pgrundev/pgbot/releases/tag/v0.2.0
