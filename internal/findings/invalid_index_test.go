@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // Issue #11: an invalid index left by a CREATE INDEX CONCURRENTLY that failed

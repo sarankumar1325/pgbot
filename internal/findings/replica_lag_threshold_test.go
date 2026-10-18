@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 func TestReplicaLagTime_warningThresholdCannotHideCritical(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 func ptr(v float64) *float64 { return &v }

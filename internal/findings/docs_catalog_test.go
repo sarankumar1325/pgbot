@@ -96,8 +96,8 @@ func listPages(t *testing.T) []string {
 
 // requiredSections every page must carry (B7-0 template).
 var requiredSections = []string{
-	"What pgbot observed", "Why it matters", "How to verify it yourself",
-	"How to fix it", "When to ignore it", "What pgbot cannot see", "Related",
+	"What queryshift observed", "Why it matters", "How to verify it yourself",
+	"How to fix it", "When to ignore it", "What queryshift cannot see", "Related",
 }
 
 // TestDocsPages_structureAndFrontMatter validates every existing page against the
@@ -156,7 +156,7 @@ func TestDocsPages_structureAndFrontMatter(t *testing.T) {
 }
 
 // TestDocsCoverage_bidirectional is the drift guard (B7-1 DoD 8): every finding
-// pgbot can emit has a page, a catalog entry, and a summary; and every page is a
+// queryshift can emit has a page, a catalog entry, and a summary; and every page is a
 // known finding. Without it the catalogue is stale within two sprints.
 func TestDocsCoverage_bidirectional(t *testing.T) {
 	pages := map[string]bool{}
@@ -184,7 +184,7 @@ func TestDocsCoverage_bidirectional(t *testing.T) {
 	}
 }
 
-// TestScope_everyFindingClassified is the D3-0 drift guard: every finding pgbot
+// TestScope_everyFindingClassified is the D3-0 drift guard: every finding queryshift
 // can emit declares one of the four valid scopes, so a new finding cannot be
 // added without its author deciding whether --profile=schema should keep it.
 func TestScope_everyFindingClassified(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 func TestChecksumFindings(t *testing.T) {
@@ -31,5 +31,15 @@ func TestChecksumFindings(t *testing.T) {
 		if has(Compute(healthy), id) != nil {
 			t.Errorf("healthy checksums must not fire %s", id)
 		}
+	}
+}
+
+func TestChecksumFindingsNeonIgnoresCompatibilityGUC(t *testing.T) {
+	c := &model.Context{
+		Server:   model.ServerInfo{Provider: "neon"},
+		Settings: &model.Settings{Params: map[string]string{"ignore_checksum_failure": "on"}},
+	}
+	if has(Compute(c), "ignore_checksum_failure_on") != nil {
+		t.Error("Neon storage compatibility GUC must not be reported as disabled corruption detection")
 	}
 }

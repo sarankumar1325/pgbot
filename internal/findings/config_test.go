@@ -3,7 +3,7 @@ package findings
 import (
 	"testing"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 func cfg(params map[string]string, provider string) *model.Context {
@@ -41,6 +41,16 @@ func TestConfigSanity(t *testing.T) {
 	}
 	if has(Compute(cfg(map[string]string{"statement_timeout": "0"}, "")), "statement_timeout_unset") == nil {
 		t.Error("statement_timeout=0 must fire (info)")
+	}
+}
+
+func TestConfigSanityNeonDoesNotTreatComputeGUCsAsDurabilityFailure(t *testing.T) {
+	c := cfg(map[string]string{"fsync": "off", "full_page_writes": "off"}, "neon")
+	got := Compute(c)
+	for _, id := range []string{"fsync_off", "full_page_writes_off"} {
+		if has(got, id) != nil {
+			t.Errorf("Neon-managed durability must not emit %s", id)
+		}
 	}
 }
 

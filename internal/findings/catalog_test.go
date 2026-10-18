@@ -3,7 +3,7 @@ package findings
 import (
 	"testing"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // TestCatalog_matchesEmitted drives fixtures that trip each catalogued finding

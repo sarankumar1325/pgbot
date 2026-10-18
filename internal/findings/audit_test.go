@@ -3,7 +3,7 @@ package findings
 import (
 	"testing"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 func auditCtx(extensions []string, params map[string]string) *model.Context {

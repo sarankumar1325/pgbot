@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 func warmWindow() model.Window {
@@ -92,7 +92,7 @@ func TestSafety_perDestructiveFinding(t *testing.T) {
 
 // destructiveRemediationRE matches a remediation that tells the user to run a
 // destructive or irreversible statement. Kept to the verbs that actually appear in
-// pgbot remediations to avoid flagging innocuous text.
+// queryshift remediations to avoid flagging innocuous text.
 var destructiveRemediationRE = regexp.MustCompile(
 	`(?i)\bDROP\s+INDEX\b|\bVACUUM\s+FULL\b|\bREINDEX\b|\bDROP\s+REPLICATION\s+SLOT\b|pg_drop_replication_slot|\bALTER\b[^.]{0,40}\bTYPE\b|\bDROP\s+TABLE\b|\bDROP\s+COLUMN\b|\bTRUNCATE\b`)
 

@@ -3,7 +3,7 @@ package findings
 import (
 	"testing"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 func TestRequiredSyncStandbys(t *testing.T) {
@@ -33,6 +33,16 @@ func TestSyncRepDegraded(t *testing.T) {
 	local := &model.Context{Settings: &model.Settings{Params: map[string]string{"synchronous_standby_names": "ANY 2 (s1,s2)", "synchronous_commit": "local"}}}
 	if has(Compute(local), "sync_rep_degraded") != nil {
 		t.Error("synchronous_commit=local must not fire (sync rep not enforced)")
+	}
+}
+
+func TestSyncRepDegradedNeonDoesNotCompareStorageQuorumToStreamingReplicas(t *testing.T) {
+	c := &model.Context{
+		Server:   model.ServerInfo{Provider: "neon"},
+		Settings: &model.Settings{Params: map[string]string{"synchronous_standby_names": "ANY 1 (pageserver)", "synchronous_commit": "on"}},
+	}
+	if has(Compute(c), "sync_rep_degraded") != nil {
+		t.Error("Neon storage quorum is not represented by pg_stat_replication and must not fire")
 	}
 }
 
