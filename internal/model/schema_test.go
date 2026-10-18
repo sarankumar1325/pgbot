@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/pgrundev/pgbot/internal/advisor"
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/advisor"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // repoRoot resolves the repository root from this test's location.
@@ -30,8 +30,8 @@ func TestSchema_matchesModel(t *testing.T) {
 		file string
 		want []byte
 	}{
-		{"pgbot-context-" + model.SchemaVersion + ".json", model.ContextSchema()},
-		{"pgbot-advise-" + advisor.SchemaVersion + ".json", advisor.ReportSchema()},
+		{"queryshift-context-" + model.SchemaVersion + ".json", model.ContextSchema()},
+		{"queryshift-advise-" + advisor.SchemaVersion + ".json", advisor.ReportSchema()},
 	}
 	for _, c := range cases {
 		path := filepath.Join(repoRoot(t), "schema", c.file)

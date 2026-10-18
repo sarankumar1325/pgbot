@@ -12,8 +12,8 @@ import (
 // The committed schema/ file is this output; TestSchema_matchesModel diffs them.
 func ContextSchema() []byte {
 	return reflectSchema(&Context{},
-		"https://pgbot.dev/schema/pgbot-context-"+SchemaVersion+".json",
-		"pgbot inspect --json — the versioned Context contract for agents and scripts.")
+		"https://raw.githubusercontent.com/sarankumar1325/queryshift/main/schema/queryshift-context-"+SchemaVersion+".json",
+		"queryshift inspect --json — the versioned Context contract for agents and scripts.")
 }
 
 // reflectSchema produces a stable, indented JSON Schema for v.

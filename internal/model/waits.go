@@ -1,6 +1,6 @@
 package model
 
-// WaitsSchemaVersion versions the `pgbot waits --json` document, independently
+// WaitsSchemaVersion versions the `queryshift waits --json` document, independently
 // of the Context schema — same policy as advise and why.
 const WaitsSchemaVersion = "1.0.0"
 

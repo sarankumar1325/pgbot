@@ -1,4 +1,4 @@
-// Package model defines Context — the single public contract every pgbot
+// Package model defines Context — the single public contract every queryshift
 // surface is built on: the terminal renderer, --json, the future MCP server,
 // and the LLM layer all consume this shape. Treat it as an API. Field order is
 // stable (encoding/json preserves struct order) so --json diffs cleanly.
@@ -66,7 +66,7 @@ type Context struct {
 	Events                []Event      `json:"events,omitempty"`       // what changed since the last run (T7)
 	WaitProfile           *WaitProfile `json:"wait_profile,omitempty"` // where time went, from ASH sampling (T8)
 	Findings              []Finding    `json:"findings"`
-	// ConfigWarnings are non-fatal problems in the loaded .pgbot.toml — an unknown
+	// ConfigWarnings are non-fatal problems in the loaded .queryshift.toml — an unknown
 	// finding ID, an unknown threshold key, a malformed glob (B2-1). A typo'd rule
 	// silently not applying is the exact failure suppression exists to prevent, so
 	// warnings surface in --json, at the top of the report, and fail `config check`.
@@ -80,7 +80,7 @@ type Context struct {
 
 // Event is a derived change in the database's schema, configuration, or
 // lifecycle since the previous run. Most schema changes are only known to have
-// happened SOMEWHERE in a time range (OccurredAfter..OccurredBefore) — pgbot
+// happened SOMEWHERE in a time range (OccurredAfter..OccurredBefore) — queryshift
 // never renders a precise time it merely inferred.
 type Event struct {
 	Kind           string     `json:"kind"` // schema.index_dropped, config.changed, server.restarted, stats.reset, ...
@@ -636,7 +636,7 @@ const (
 )
 
 // Destructive-action vocabulary — the Action an agent matches a guard on. Defined
-// in one place so a consumer and pgbot agree on the exact strings.
+// in one place so a consumer and queryshift agree on the exact strings.
 const (
 	ActionDropIndex           = "DROP INDEX"
 	ActionVacuumFull          = "VACUUM FULL"
@@ -669,7 +669,7 @@ type Finding struct {
 	Remediation string   `json:"remediation,omitempty"` // the actionable "what to do", human-facing
 	// Impact ranks findings against each other; Confidence says how sure we are;
 	// Caveats are the load-bearing "but…" clauses that render inline, never in a
-	// footnote — the ones that stop pgbot from confidently recommending an outage.
+	// footnote — the ones that stop queryshift from confidently recommending an outage.
 	Impact     Impact   `json:"impact"`
 	Confidence float64  `json:"confidence"` // 0.0–1.0; below 0.5 renders as "possible", not an assertion
 	Caveats    []string `json:"caveats,omitempty"`
