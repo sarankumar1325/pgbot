@@ -8,9 +8,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/conn"
-	"github.com/pgrundev/pgbot/internal/model"
 	"github.com/pgrundev/pggo"
+	"github.com/sarankumar1325/queryshift/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // Kind decides how the runner samples a collector.
@@ -69,7 +69,7 @@ type sampled struct {
 	A   any
 	B   any
 	Err error
-	// OwnTxns is how many transactions pgbot itself committed inside the sample
+	// OwnTxns is how many transactions queryshift itself committed inside the sample
 	// window [A, B] — the wait sampler's successful polls. Only the health
 	// collector receives it, and subtracts it from the commit delta (PR#1).
 	OwnTxns int64

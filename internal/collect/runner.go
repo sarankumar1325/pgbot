@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/conn"
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/model"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -42,7 +42,7 @@ func Run(ctx context.Context, t *conn.Target, opts Options) (*model.Context, err
 	ctx, cancel := context.WithTimeout(ctx, deadline)
 	defer cancel()
 
-	// Register all of pgbot's own backend PIDs before any collector (or the ASH
+	// Register all of queryshift's own backend PIDs before any collector (or the ASH
 	// sampler) reads pg_stat_activity, so ExcludeSelf never misses a sibling
 	// connection and counts it as a phantom session.
 	t.Warm(ctx)
@@ -53,8 +53,8 @@ func Run(ctx context.Context, t *conn.Target, opts Options) (*model.Context, err
 
 	// The sampler never fails the run — a dead sampler just yields an unavailable
 	// profile. It is launched right after health's sample A (below) so its polls
-	// are the only pgbot traffic inside the window [A, B]; that poll count is then
-	// subtracted from health's commit delta (sampled.OwnTxns), so pgbot's own
+	// are the only queryshift traffic inside the window [A, B]; that poll count is then
+	// subtracted from health's commit delta (sampled.OwnTxns), so queryshift's own
 	// commits aren't read back as the database's TPS (PR#1).
 	var (
 		ash     ashResult

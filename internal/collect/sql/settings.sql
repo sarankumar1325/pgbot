@@ -1,9 +1,9 @@
 -- Two sets in one scan. Runs inside conn.UnpinLocal (settings.go) so setting /
 -- current_setting() reflect the server, database and role configuration rather
--- than the timeouts and read-only pin pgbot puts on its own session.
+-- than the timeouts and read-only pin queryshift puts on its own session.
 --   'override' — parameters set away from their compiled-in default by a human
 --                (postgresql.conf, ALTER SYSTEM, ALTER DATABASE/ROLE, command
---                line). Session/client-sourced rows are pgbot's own and are not
+--                line). Session/client-sourced rows are queryshift's own and are not
 --                server configuration.
 --   'tuning'   — a fixed whitelist of tuning-relevant parameters, ALWAYS, with their
 --                display values, so the tuning rules can name the current setting.

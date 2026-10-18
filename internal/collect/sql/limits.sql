@@ -8,7 +8,7 @@
 -- exhaust toward the same ~2.1B wall as regular transaction ids.
 -- conn_used counts what max_connections actually limits: client backends.
 -- Background workers, autovacuum, checkpointer/bgwriter/walwriter and PG18's IO
--- workers appear in pg_stat_activity but draw on other limits. pgbot's own pool
+-- workers appear in pg_stat_activity but draw on other limits. queryshift's own pool
 -- connections are excluded too (pid <> pg_backend_pid() is rewritten by
 -- Target.ExcludeSelf to drop all of them) so the monitor doesn't inflate the very
 -- connection-saturation percentage it reports.
