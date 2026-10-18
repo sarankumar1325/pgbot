@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://pgbot.dev/schema/pgbot-context-1.5.0.json",
+  "$id": "https://raw.githubusercontent.com/sarankumar1325/queryshift/main/schema/queryshift-context-1.1.0.json",
   "$ref": "#/$defs/Context",
   "$defs": {
     "Activity": {
@@ -187,55 +187,6 @@
         "exactness"
       ]
     },
-    "Collation": {
-      "properties": {
-        "exactness": {
-          "type": "string"
-        },
-        "reason": {
-          "type": "string"
-        },
-        "mismatches": {
-          "items": {
-            "$ref": "#/$defs/CollationMismatch"
-          },
-          "type": "array"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "exactness"
-      ]
-    },
-    "CollationMismatch": {
-      "properties": {
-        "kind": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        },
-        "provider": {
-          "type": "string"
-        },
-        "recorded_version": {
-          "type": "string"
-        },
-        "actual_version": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "kind",
-        "name",
-        "provider",
-        "recorded_version",
-        "actual_version"
-      ]
-    },
     "ConnGroup": {
       "properties": {
         "app_name": {
@@ -331,12 +282,6 @@
         },
         "standby": {
           "$ref": "#/$defs/StandbyStatus"
-        },
-        "collation": {
-          "$ref": "#/$defs/Collation"
-        },
-        "replica_identity": {
-          "$ref": "#/$defs/ReplicaIdentity"
         },
         "deltas": {
           "$ref": "#/$defs/Deltas"
@@ -522,9 +467,6 @@
           },
           "type": "array"
         },
-        "safety": {
-          "$ref": "#/$defs/Safety"
-        },
         "suppressed": {
           "type": "boolean"
         },
@@ -703,21 +645,6 @@
         },
         "definition": {
           "type": "string"
-        },
-        "columns": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "method": {
-          "type": "string"
-        },
-        "unique": {
-          "type": "boolean"
-        },
-        "primary": {
-          "type": "boolean"
         },
         "partial": {
           "type": "boolean"
@@ -944,30 +871,6 @@
         "operation"
       ]
     },
-    "PublishedTable": {
-      "properties": {
-        "schema": {
-          "type": "string"
-        },
-        "table": {
-          "type": "string"
-        },
-        "identity": {
-          "type": "string"
-        },
-        "publications": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "schema",
-        "table",
-        "identity",
-        "publications"
-      ]
-    },
     "Queries": {
       "properties": {
         "exactness": {
@@ -1113,27 +1016,6 @@
         "bytes"
       ]
     },
-    "ReplicaIdentity": {
-      "properties": {
-        "exactness": {
-          "type": "string"
-        },
-        "reason": {
-          "type": "string"
-        },
-        "unidentifiable": {
-          "items": {
-            "$ref": "#/$defs/PublishedTable"
-          },
-          "type": "array"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "exactness"
-      ]
-    },
     "ReplicaRow": {
       "properties": {
         "client_addr": {
@@ -1245,49 +1127,6 @@
         "retained_bytes"
       ]
     },
-    "Safety": {
-      "properties": {
-        "blocking_caveats": {
-          "items": {
-            "$ref": "#/$defs/SafetyGuard"
-          },
-          "type": "array"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "blocking_caveats"
-      ]
-    },
-    "SafetyGuard": {
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "kind": {
-          "type": "string"
-        },
-        "action": {
-          "type": "string"
-        },
-        "text": {
-          "type": "string"
-        },
-        "verify": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "id",
-        "kind",
-        "action",
-        "text",
-        "verify"
-      ]
-    },
     "SequenceUsage": {
       "properties": {
         "schema": {
@@ -1365,12 +1204,6 @@
         },
         "via_pooler": {
           "type": "boolean"
-        },
-        "instance": {
-          "type": "string"
-        },
-        "instance_role": {
-          "type": "string"
         },
         "started_at": {
           "type": "string",
@@ -1792,5 +1625,5 @@
       ]
     }
   },
-  "description": "pgbot inspect --json — the versioned Context contract for agents and scripts."
+  "description": "queryshift inspect --json — the versioned Context contract for agents and scripts."
 }

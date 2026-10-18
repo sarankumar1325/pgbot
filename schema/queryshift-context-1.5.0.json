@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://pgbot.dev/schema/pgbot-context-1.4.0.json",
+  "$id": "https://raw.githubusercontent.com/sarankumar1325/queryshift/main/schema/queryshift-context-1.5.0.json",
   "$ref": "#/$defs/Context",
   "$defs": {
     "Activity": {
@@ -334,6 +334,9 @@
         },
         "collation": {
           "$ref": "#/$defs/Collation"
+        },
+        "replica_identity": {
+          "$ref": "#/$defs/ReplicaIdentity"
         },
         "deltas": {
           "$ref": "#/$defs/Deltas"
@@ -941,6 +944,30 @@
         "operation"
       ]
     },
+    "PublishedTable": {
+      "properties": {
+        "schema": {
+          "type": "string"
+        },
+        "table": {
+          "type": "string"
+        },
+        "identity": {
+          "type": "string"
+        },
+        "publications": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "schema",
+        "table",
+        "identity",
+        "publications"
+      ]
+    },
     "Queries": {
       "properties": {
         "exactness": {
@@ -1084,6 +1111,27 @@
         "index",
         "covered_by",
         "bytes"
+      ]
+    },
+    "ReplicaIdentity": {
+      "properties": {
+        "exactness": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "unidentifiable": {
+          "items": {
+            "$ref": "#/$defs/PublishedTable"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "exactness"
       ]
     },
     "ReplicaRow": {
@@ -1744,5 +1792,5 @@
       ]
     }
   },
-  "description": "pgbot inspect --json — the versioned Context contract for agents and scripts."
+  "description": "queryshift inspect --json — the versioned Context contract for agents and scripts."
 }

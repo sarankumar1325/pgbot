@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://pgbot.dev/schema/pgbot-context-1.2.0.json",
+  "$id": "https://raw.githubusercontent.com/sarankumar1325/queryshift/main/schema/queryshift-context-1.3.0.json",
   "$ref": "#/$defs/Context",
   "$defs": {
     "Activity": {
@@ -187,6 +187,55 @@
         "exactness"
       ]
     },
+    "Collation": {
+      "properties": {
+        "exactness": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "mismatches": {
+          "items": {
+            "$ref": "#/$defs/CollationMismatch"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "exactness"
+      ]
+    },
+    "CollationMismatch": {
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "recorded_version": {
+          "type": "string"
+        },
+        "actual_version": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "kind",
+        "name",
+        "provider",
+        "recorded_version",
+        "actual_version"
+      ]
+    },
     "ConnGroup": {
       "properties": {
         "app_name": {
@@ -282,6 +331,9 @@
         },
         "standby": {
           "$ref": "#/$defs/StandbyStatus"
+        },
+        "collation": {
+          "$ref": "#/$defs/Collation"
         },
         "deltas": {
           "$ref": "#/$defs/Deltas"
@@ -1686,5 +1738,5 @@
       ]
     }
   },
-  "description": "pgbot inspect --json — the versioned Context contract for agents and scripts."
+  "description": "queryshift inspect --json — the versioned Context contract for agents and scripts."
 }

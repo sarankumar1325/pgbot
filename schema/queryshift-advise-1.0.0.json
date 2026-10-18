@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://pgbot.dev/schema/pgbot-advise-1.0.0.json",
+  "$id": "https://raw.githubusercontent.com/sarankumar1325/queryshift/main/schema/queryshift-advise-1.0.0.json",
   "$ref": "#/$defs/Report",
   "$defs": {
     "Recommendation": {
@@ -114,5 +114,5 @@
       ]
     }
   },
-  "description": "pgbot advise --json — planner-validated index recommendations (hypopg). Nothing is built."
+  "description": "queryshift advise --json — planner-validated index recommendations (hypopg). Nothing is built."
 }
