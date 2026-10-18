@@ -1,4 +1,4 @@
-// Package advisor is pgbot's evidential index advisor (B1). It NEVER guesses:
+// Package advisor is queryshift's evidential index advisor (B1). It NEVER guesses:
 // candidate indexes are generated deterministically in Go by reading the
 // planner's own Seq Scan filters, then each candidate is VALIDATED against
 // PostgreSQL — created HYPOTHETICALLY with hypopg (nothing is built on disk),
@@ -10,7 +10,7 @@
 // query WITHOUT values and WITHOUT executing it (PG16+). The executing variant of
 // EXPLAIN (the one that runs the query) is never used — the tree-wide CI guard
 // forbids it. hypopg indexes live in backend memory and are dropped by hypopg_reset.
-// pgbot never runs the inspected query itself.
+// queryshift never runs the inspected query itself.
 package advisor
 
 import (

@@ -10,11 +10,12 @@ import (
 func clearEnv(t *testing.T) {
 	t.Helper()
 	for _, k := range []string{
-		"PGBOT_AI_PROVIDER", "PGBOT_AI_MODEL", "PGBOT_AI_BASE_URL", "PGBOT_AI_API_KEY",
-		"PGBOT_AI_REASONING_EFFORT", "GEMINI_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY",
+		"QUERYSHIFT_AI_PROVIDER", "QUERYSHIFT_AI_MODEL", "QUERYSHIFT_AI_BASE_URL", "QUERYSHIFT_AI_API_KEY",
+		"QUERYSHIFT_AI_REASONING_EFFORT", "GEMINI_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY",
 		"OPENAI_API_KEY", "OPENROUTER_API_KEY", "REQUESTY_API_KEY", "OPPER_API_KEY", "XAI_API_KEY", "GROK_API_KEY",
-		"AWS_BEARER_TOKEN_BEDROCK", "AWS_REGION", "AWS_DEFAULT_REGION",
-		"PGBOT_GEMINI_MODEL", "PGBOT_GEMINI_URL", "PGBOT_OPENAI_MODEL", "PGBOT_OPENAI_URL",
+		"AWS_BEARER_TOKEN_BEDROCK", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+		"AWS_REGION", "AWS_DEFAULT_REGION", "QUERYSHIFT_AGENT_MODEL",
+		"QUERYSHIFT_GEMINI_MODEL", "QUERYSHIFT_GEMINI_URL", "QUERYSHIFT_OPENAI_MODEL", "QUERYSHIFT_OPENAI_URL",
 	} {
 		t.Setenv(k, "")
 	}
@@ -46,6 +47,8 @@ func TestResolve_autodetect(t *testing.T) {
 		{"anthropic", map[string]string{"ANTHROPIC_API_KEY": "k"}, "anthropic", defaultAnthropicURL},
 		{"openai", map[string]string{"OPENAI_API_KEY": "k"}, "openai", defaultOpenAIURL},
 		{"openrouter", map[string]string{"OPENROUTER_API_KEY": "k"}, "openai", "https://openrouter.ai/api/v1"},
+		{"bedrock api key", map[string]string{"AWS_BEARER_TOKEN_BEDROCK": "k"}, "bedrock", "https://bedrock-mantle.us-east-1.api.aws/openai/v1"},
+		{"bedrock aws credentials", map[string]string{"AWS_ACCESS_KEY_ID": "akid", "AWS_SECRET_ACCESS_KEY": "secret"}, "bedrock", "https://bedrock-mantle.us-east-1.api.aws/openai/v1"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -64,6 +67,19 @@ func TestResolve_autodetect(t *testing.T) {
 				t.Errorf("endpoint = %q, want %q", m.Endpoint(), tc.wantEndpoint)
 			}
 		})
+	}
+}
+
+func TestResolveBedrockUsesAgentModelFallback(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("AWS_BEARER_TOKEN_BEDROCK", "k")
+	t.Setenv("QUERYSHIFT_AGENT_MODEL", "deepseek.v3.2")
+	m, err := Resolve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Provider() != "bedrock" || m.Model() != "deepseek.v3.2" {
+		t.Fatalf("bedrock agent model fallback not honored: provider=%q model=%q", m.Provider(), m.Model())
 	}
 }
 
@@ -86,13 +102,13 @@ func TestResolve_explicitProviderBeatsAutodetect(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("GEMINI_API_KEY", "g")
 	t.Setenv("ANTHROPIC_API_KEY", "a")
-	t.Setenv("PGBOT_AI_PROVIDER", "anthropic")
+	t.Setenv("QUERYSHIFT_AI_PROVIDER", "anthropic")
 	m, err := Resolve()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if m.Provider() != "anthropic" {
-		t.Errorf("PGBOT_AI_PROVIDER must win, got %q", m.Provider())
+		t.Errorf("QUERYSHIFT_AI_PROVIDER must win, got %q", m.Provider())
 	}
 	if m.Model() != defaultAnthropicModel {
 		t.Errorf("model = %q, want the anthropic default", m.Model())
@@ -101,10 +117,10 @@ func TestResolve_explicitProviderBeatsAutodetect(t *testing.T) {
 
 func TestResolve_modelAndURLOverrides(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("PGBOT_AI_PROVIDER", "gemini")
+	t.Setenv("QUERYSHIFT_AI_PROVIDER", "gemini")
 	t.Setenv("GEMINI_API_KEY", "k")
-	t.Setenv("PGBOT_AI_MODEL", "gemini-3-pro")
-	t.Setenv("PGBOT_AI_BASE_URL", "https://proxy.example/v1/")
+	t.Setenv("QUERYSHIFT_AI_MODEL", "gemini-3-pro")
+	t.Setenv("QUERYSHIFT_AI_BASE_URL", "https://proxy.example/v1/")
 	m, err := Resolve()
 	if err != nil {
 		t.Fatal(err)
@@ -121,34 +137,34 @@ func TestResolve_modelAndURLOverrides(t *testing.T) {
 func TestResolve_legacyGeminiVars(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("GEMINI_API_KEY", "k")
-	t.Setenv("PGBOT_GEMINI_MODEL", "gemini-3-pro")
-	t.Setenv("PGBOT_GEMINI_URL", "https://legacy.example/v1beta")
+	t.Setenv("QUERYSHIFT_GEMINI_MODEL", "gemini-3-pro")
+	t.Setenv("QUERYSHIFT_GEMINI_URL", "https://legacy.example/v1beta")
 	m, err := Resolve()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if m.Model() != "gemini-3-pro" {
-		t.Errorf("PGBOT_GEMINI_MODEL not honored: %q", m.Model())
+		t.Errorf("QUERYSHIFT_GEMINI_MODEL not honored: %q", m.Model())
 	}
 	if m.Endpoint() != "https://legacy.example/v1beta" {
-		t.Errorf("PGBOT_GEMINI_URL not honored: %q", m.Endpoint())
+		t.Errorf("QUERYSHIFT_GEMINI_URL not honored: %q", m.Endpoint())
 	}
 }
 
 func TestResolve_legacyOpenAIVars(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("OPENAI_API_KEY", "k")
-	t.Setenv("PGBOT_OPENAI_MODEL", "gpt-4.1")
-	t.Setenv("PGBOT_OPENAI_URL", "https://legacy-openai.example/v1/")
+	t.Setenv("QUERYSHIFT_OPENAI_MODEL", "gpt-4.1")
+	t.Setenv("QUERYSHIFT_OPENAI_URL", "https://legacy-openai.example/v1/")
 	m, err := Resolve()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if m.Model() != "gpt-4.1" {
-		t.Errorf("PGBOT_OPENAI_MODEL not honored: %q", m.Model())
+		t.Errorf("QUERYSHIFT_OPENAI_MODEL not honored: %q", m.Model())
 	}
 	if m.Endpoint() != "https://legacy-openai.example/v1" {
-		t.Errorf("PGBOT_OPENAI_URL not honored: %q", m.Endpoint())
+		t.Errorf("QUERYSHIFT_OPENAI_URL not honored: %q", m.Endpoint())
 	}
 }
 
@@ -156,8 +172,8 @@ func TestResolve_legacyOpenAIVars(t *testing.T) {
 // a key before we'd send findings to it.
 func TestResolve_localEndpointNeedsNoKey(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("PGBOT_AI_BASE_URL", "http://localhost:11434/v1")
-	t.Setenv("PGBOT_AI_MODEL", "llama3.1")
+	t.Setenv("QUERYSHIFT_AI_BASE_URL", "http://localhost:11434/v1")
+	t.Setenv("QUERYSHIFT_AI_MODEL", "llama3.1")
 	m, err := Resolve()
 	if err != nil {
 		t.Fatalf("a local endpoint should not require a key: %v", err)
@@ -172,8 +188,8 @@ func TestResolve_localEndpointNeedsNoKey(t *testing.T) {
 
 func TestResolve_remoteEndpointRequiresKey(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("PGBOT_AI_PROVIDER", "openai")
-	t.Setenv("PGBOT_AI_BASE_URL", "https://api.example.com/v1")
+	t.Setenv("QUERYSHIFT_AI_PROVIDER", "openai")
+	t.Setenv("QUERYSHIFT_AI_BASE_URL", "https://api.example.com/v1")
 	if _, err := Resolve(); err == nil {
 		t.Error("a remote endpoint with no key must be an error")
 	}
@@ -181,8 +197,8 @@ func TestResolve_remoteEndpointRequiresKey(t *testing.T) {
 
 func TestResolve_unknownProvider(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("PGBOT_AI_PROVIDER", "unknown-provider")
-	t.Setenv("PGBOT_AI_API_KEY", "k")
+	t.Setenv("QUERYSHIFT_AI_PROVIDER", "unknown-provider")
+	t.Setenv("QUERYSHIFT_AI_API_KEY", "k")
 	if _, err := Resolve(); err == nil || !strings.Contains(err.Error(), "unknown") {
 		t.Errorf("unknown provider should be rejected clearly, got %v", err)
 	}
@@ -205,23 +221,23 @@ func TestLocalAndHost(t *testing.T) {
 }
 
 // An explicit alias names its endpoint: openrouter goes to OpenRouter even when
-// the key arrives as the generic PGBOT_AI_API_KEY (the raw-variable check alone
+// the key arrives as the generic QUERYSHIFT_AI_API_KEY (the raw-variable check alone
 // sent it to api.openai.com), ollama goes to the local default with no key, and
 // the generic openai-compatible alias has no endpoint to guess.
 func TestResolve_explicitAliasesPickTheirEndpoint(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("PGBOT_AI_PROVIDER", "openrouter")
-	t.Setenv("PGBOT_AI_API_KEY", "sk-or-…")
+	t.Setenv("QUERYSHIFT_AI_PROVIDER", "openrouter")
+	t.Setenv("QUERYSHIFT_AI_API_KEY", "sk-or-…")
 	m, err := Resolve()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if m.Endpoint() != defaultOpenRouterURL {
-		t.Errorf("openrouter with PGBOT_AI_API_KEY: endpoint = %q, want %q", m.Endpoint(), defaultOpenRouterURL)
+		t.Errorf("openrouter with QUERYSHIFT_AI_API_KEY: endpoint = %q, want %q", m.Endpoint(), defaultOpenRouterURL)
 	}
 
 	clearEnv(t)
-	t.Setenv("PGBOT_AI_PROVIDER", "ollama")
+	t.Setenv("QUERYSHIFT_AI_PROVIDER", "ollama")
 	m, err = Resolve()
 	if err != nil {
 		t.Fatalf("ollama with no key and no base URL: %v", err)
@@ -231,14 +247,14 @@ func TestResolve_explicitAliasesPickTheirEndpoint(t *testing.T) {
 	}
 
 	clearEnv(t)
-	t.Setenv("PGBOT_AI_PROVIDER", "openai-compatible")
-	t.Setenv("PGBOT_AI_API_KEY", "k")
-	if _, err := Resolve(); err == nil || !strings.Contains(err.Error(), "PGBOT_AI_BASE_URL") {
-		t.Errorf("openai-compatible without a base URL should ask for PGBOT_AI_BASE_URL, got: %v", err)
+	t.Setenv("QUERYSHIFT_AI_PROVIDER", "openai-compatible")
+	t.Setenv("QUERYSHIFT_AI_API_KEY", "k")
+	if _, err := Resolve(); err == nil || !strings.Contains(err.Error(), "QUERYSHIFT_AI_BASE_URL") {
+		t.Errorf("openai-compatible without a base URL should ask for QUERYSHIFT_AI_BASE_URL, got: %v", err)
 	}
 
 	clearEnv(t)
-	t.Setenv("PGBOT_AI_PROVIDER", "openai")
+	t.Setenv("QUERYSHIFT_AI_PROVIDER", "openai")
 	t.Setenv("OPENAI_API_KEY", "k")
 	m, err = Resolve()
 	if err != nil {
@@ -250,11 +266,11 @@ func TestResolve_explicitAliasesPickTheirEndpoint(t *testing.T) {
 }
 
 // requesty is an explicit alias only: it goes to Requesty with REQUESTY_API_KEY
-// or PGBOT_AI_API_KEY, never borrows an OpenAI key, and is never auto-detected.
+// or QUERYSHIFT_AI_API_KEY, never borrows an OpenAI key, and is never auto-detected.
 func TestResolve_requesty(t *testing.T) {
-	for _, keyVar := range []string{"REQUESTY_API_KEY", "PGBOT_AI_API_KEY"} {
+	for _, keyVar := range []string{"REQUESTY_API_KEY", "QUERYSHIFT_AI_API_KEY"} {
 		clearEnv(t)
-		t.Setenv("PGBOT_AI_PROVIDER", "requesty")
+		t.Setenv("QUERYSHIFT_AI_PROVIDER", "requesty")
 		t.Setenv(keyVar, "k")
 		m, err := Resolve()
 		if err != nil {
@@ -269,7 +285,7 @@ func TestResolve_requesty(t *testing.T) {
 	}
 
 	clearEnv(t)
-	t.Setenv("PGBOT_AI_PROVIDER", "requesty")
+	t.Setenv("QUERYSHIFT_AI_PROVIDER", "requesty")
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
 	if _, err := Resolve(); err == nil || !strings.Contains(err.Error(), "REQUESTY_API_KEY") {
 		t.Errorf("requesty with only OPENAI_API_KEY should ask for REQUESTY_API_KEY, got: %v", err)
@@ -283,11 +299,11 @@ func TestResolve_requesty(t *testing.T) {
 }
 
 // opper is an explicit alias only: it goes to Opper with OPPER_API_KEY or
-// PGBOT_AI_API_KEY, never borrows an OpenAI key, and is never auto-detected.
+// QUERYSHIFT_AI_API_KEY, never borrows an OpenAI key, and is never auto-detected.
 func TestResolve_opper(t *testing.T) {
-	for _, keyVar := range []string{"OPPER_API_KEY", "PGBOT_AI_API_KEY"} {
+	for _, keyVar := range []string{"OPPER_API_KEY", "QUERYSHIFT_AI_API_KEY"} {
 		clearEnv(t)
-		t.Setenv("PGBOT_AI_PROVIDER", "opper")
+		t.Setenv("QUERYSHIFT_AI_PROVIDER", "opper")
 		t.Setenv(keyVar, "k")
 		m, err := Resolve()
 		if err != nil {
@@ -302,7 +318,7 @@ func TestResolve_opper(t *testing.T) {
 	}
 
 	clearEnv(t)
-	t.Setenv("PGBOT_AI_PROVIDER", "opper")
+	t.Setenv("QUERYSHIFT_AI_PROVIDER", "opper")
 	t.Setenv("OPENAI_API_KEY", "sk-openai")
 	if _, err := Resolve(); err == nil || !strings.Contains(err.Error(), "OPPER_API_KEY") {
 		t.Errorf("opper with only OPENAI_API_KEY should ask for OPPER_API_KEY, got: %v", err)
@@ -317,28 +333,28 @@ func TestResolve_opper(t *testing.T) {
 
 // A custom remote endpoint must come with a named provider. Auto-detecting one
 // from an ambient vendor key would send that key — say the ANTHROPIC_API_KEY
-// another tool left in the shell — to whatever host PGBOT_AI_BASE_URL names,
+// another tool left in the shell — to whatever host QUERYSHIFT_AI_BASE_URL names,
 // with Anthropic's request format, and --yes would never show it.
 func TestResolve_remoteBaseURLNeedsExplicitProvider(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-…")
-	t.Setenv("PGBOT_AI_BASE_URL", "https://gateway.example/v1")
+	t.Setenv("QUERYSHIFT_AI_BASE_URL", "https://gateway.example/v1")
 	_, err := Resolve()
 	if err == nil {
-		t.Fatal("remote PGBOT_AI_BASE_URL with no PGBOT_AI_PROVIDER resolved a model; want an error")
+		t.Fatal("remote QUERYSHIFT_AI_BASE_URL with no QUERYSHIFT_AI_PROVIDER resolved a model; want an error")
 	}
-	if !strings.Contains(err.Error(), "PGBOT_AI_PROVIDER") || strings.Contains(err.Error(), "sk-ant") {
-		t.Errorf("error should ask for PGBOT_AI_PROVIDER and never echo a key, got: %v", err)
+	if !strings.Contains(err.Error(), "QUERYSHIFT_AI_PROVIDER") || strings.Contains(err.Error(), "sk-ant") {
+		t.Errorf("error should ask for QUERYSHIFT_AI_PROVIDER and never echo a key, got: %v", err)
 	}
 
 	// Naming it makes the same setup work, and the local case never needed it.
-	t.Setenv("PGBOT_AI_PROVIDER", "anthropic")
+	t.Setenv("QUERYSHIFT_AI_PROVIDER", "anthropic")
 	if m, err := Resolve(); err != nil || m.Endpoint() != "https://gateway.example/v1" {
 		t.Errorf("named provider with a remote base URL: model=%v err=%v", m, err)
 	}
 	clearEnv(t)
-	t.Setenv("PGBOT_AI_BASE_URL", "http://127.0.0.1:8000/v1")
+	t.Setenv("QUERYSHIFT_AI_BASE_URL", "http://127.0.0.1:8000/v1")
 	if _, err := Resolve(); err != nil {
-		t.Errorf("local PGBOT_AI_BASE_URL alone should still resolve: %v", err)
+		t.Errorf("local QUERYSHIFT_AI_BASE_URL alone should still resolve: %v", err)
 	}
 }

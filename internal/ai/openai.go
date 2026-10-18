@@ -14,13 +14,13 @@ const (
 	defaultOpenAIModel = "gpt-5.6-terra"
 	defaultOpenAIURL   = "https://api.openai.com/v1"
 
-	// Endpoints the explicit PGBOT_AI_PROVIDER aliases stand for.
+	// Endpoints the explicit QUERYSHIFT_AI_PROVIDER aliases stand for.
 	defaultOpenRouterURL = "https://openrouter.ai/api/v1"
 	defaultRequestyURL   = "https://router.requesty.ai/v1"
 	defaultOpperURL      = "https://api.opper.ai/v3/compat"
 	defaultOllamaURL     = "http://localhost:11434/v1"
 
-	// Applied only to reasoning models. Override with $PGBOT_AI_REASONING_EFFORT
+	// Applied only to reasoning models. Override with $QUERYSHIFT_AI_REASONING_EFFORT
 	// (none, low, medium, high, xhigh, max).
 	defaultReasoningEffort = "xhigh"
 
@@ -34,7 +34,7 @@ const (
 // OpenAIProvider speaks /chat/completions. That one wire format covers far more
 // than OpenAI: OpenRouter, Groq, Together, Fireworks, DeepSeek, xAI, Mistral, and
 // every local server (Ollama, vLLM, LM Studio) accept it, so pointing
-// $PGBOT_AI_BASE_URL at any of them is the whole integration.
+// $QUERYSHIFT_AI_BASE_URL at any of them is the whole integration.
 type OpenAIProvider struct {
 	APIKey  string
 	BaseURL string
@@ -183,7 +183,7 @@ func (m *openaiModel) Generate(ctx context.Context, c Call) (*Response, error) {
 		// no visible text at all — common on small local models. Say what to do
 		// about it rather than just reporting emptiness.
 		if choice.FinishReason == "length" {
-			return nil, fmt.Errorf("%s hit the output cap before writing an answer — the model spent it all on internal reasoning; lower $PGBOT_AI_REASONING_EFFORT, raise the cap, or pick a non-reasoning model", Host(m.provider.BaseURL))
+			return nil, fmt.Errorf("%s hit the output cap before writing an answer — the model spent it all on internal reasoning; lower $QUERYSHIFT_AI_REASONING_EFFORT, raise the cap, or pick a non-reasoning model", Host(m.provider.BaseURL))
 		}
 		return nil, fmt.Errorf("%s returned an empty explanation (finish: %s)", Host(m.provider.BaseURL), choice.FinishReason)
 	}

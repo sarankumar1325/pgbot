@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	// The most capable current model. `pgbot explain` is a one-shot call on a
+	// The most capable current model. `queryshift explain` is a one-shot call on a
 	// small payload, so this is cheap in absolute terms — but set
-	// $PGBOT_AI_MODEL=claude-haiku-4-5 if you run it in a tight loop.
+	// $QUERYSHIFT_AI_MODEL=claude-haiku-4-5 if you run it in a tight loop.
 	defaultAnthropicModel = "claude-opus-5"
 	defaultAnthropicURL   = "https://api.anthropic.com"
 	anthropicVersion      = "2023-06-01"

@@ -1,4 +1,4 @@
-// Package ai is pgbot's OPTIONAL explanation layer. It never produces findings —
+// Package ai is queryshift's OPTIONAL explanation layer. It never produces findings —
 // those are computed deterministically in package findings. It only takes an
 // already-computed, PII-free Context and asks a model to explain and prioritize
 // it in plain language. Everything it emits is labeled as model-generated.
@@ -6,7 +6,7 @@
 // The model is yours to choose: Gemini, Anthropic, OpenAI, AWS Bedrock Mantle, or
 // any OpenAI-compatible endpoint (OpenRouter, Groq, Together, DeepSeek, xAI,
 // Mistral, Ollama, vLLM, LM Studio). Each provider is a few hundred lines of
-// net/http so pgbot keeps its single-static-binary, minimal-dependency promise —
+// net/http so queryshift keeps its single-static-binary, minimal-dependency promise —
 // no vendor SDKs. Even Bedrock's SigV4 token is a hundred lines of HMAC (bedrock.go).
 package ai
 
@@ -25,7 +25,7 @@ import (
 // (anthropic-sdk-go, openai-go, google.golang.org/genai, aws-sdk-go-v2) and takes
 // the binary from 23 MB to ~65 MB for one non-streaming POST (aws-sdk-go-v2 alone
 // measured +3 MB and 14 modules). The interface is narrowed to the single call
-// pgbot makes: one system turn, one user turn, no tools, no streaming.
+// queryshift makes: one system turn, one user turn, no tools, no streaming.
 type Provider interface {
 	Name() string
 	LanguageModel(ctx context.Context, modelID string) (LanguageModel, error)
@@ -83,8 +83,8 @@ func (w wireError) message() string {
 	return strings.TrimSpace(string(w.Error))
 }
 
-// Local reports whether a base URL points at this machine. `pgbot explain` and
-// `pgbot ask` are the only commands that can send data off the box — when they
+// Local reports whether a base URL points at this machine. `queryshift explain` and
+// `queryshift ask` are the only commands that can send data off the box — when they
 // can't (Ollama, vLLM, LM Studio on localhost), the consent prompt should say so
 // rather than warn about a disclosure that isn't happening.
 func Local(endpoint string) bool {

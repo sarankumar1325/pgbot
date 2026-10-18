@@ -111,9 +111,9 @@ func TestBedrockEnvCredentials(t *testing.T) {
 		t.Run(tc.model+tc.path, func(t *testing.T) {
 			model := tc.model
 			isolateAWS(t)
-			t.Setenv("PGBOT_AI_PROVIDER", "bedrock")
-			t.Setenv("PGBOT_AI_MODEL", model)
-			t.Setenv("PGBOT_AI_BASE_URL", tc.base)
+			t.Setenv("QUERYSHIFT_AI_PROVIDER", "bedrock")
+			t.Setenv("QUERYSHIFT_AI_MODEL", model)
+			t.Setenv("QUERYSHIFT_AI_BASE_URL", tc.base)
 			t.Setenv("AWS_REGION", "us-west-2")
 			t.Setenv("AWS_ACCESS_KEY_ID", "AKIDEXAMPLE")
 			t.Setenv("AWS_SECRET_ACCESS_KEY", "dummy-secret")
@@ -183,9 +183,9 @@ func TestBedrockEnvCredentials(t *testing.T) {
 
 func TestBedrockAuthConfiguration(t *testing.T) {
 	isolateAWS(t)
-	t.Setenv("PGBOT_AI_PROVIDER", "bedrock")
+	t.Setenv("QUERYSHIFT_AI_PROVIDER", "bedrock")
 	t.Setenv("AWS_BEARER_TOKEN_BEDROCK", "bedrock-override")
-	t.Setenv("PGBOT_AI_API_KEY", "explicit-override")
+	t.Setenv("QUERYSHIFT_AI_API_KEY", "explicit-override")
 	m, err := Resolve()
 	if err != nil {
 		t.Fatal(err)
@@ -197,7 +197,7 @@ func TestBedrockAuthConfiguration(t *testing.T) {
 	if m.Model() != "openai."+defaultOpenAIModel || m.Endpoint() != "https://bedrock-mantle.us-east-1.api.aws/openai/v1" {
 		t.Fatalf("defaults: model=%s endpoint=%s", m.Model(), m.Endpoint())
 	}
-	t.Setenv("PGBOT_AI_API_KEY", "")
+	t.Setenv("QUERYSHIFT_AI_API_KEY", "")
 	m, err = Resolve()
 	if err != nil {
 		t.Fatal(err)
@@ -218,19 +218,19 @@ func TestBedrockAuthConfiguration(t *testing.T) {
 
 	t.Setenv("AWS_ACCESS_KEY_ID", "AKIDEXAMPLE")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "dummy-secret")
-	t.Setenv("PGBOT_AI_BASE_URL", "https://example.com/openai/v1")
+	t.Setenv("QUERYSHIFT_AI_BASE_URL", "https://example.com/openai/v1")
 	if _, err := Resolve(); err == nil {
 		t.Fatal("access keys must not be sent to a non-Mantle endpoint")
 	}
 	t.Setenv("AWS_REGION", "us-east-1")
-	t.Setenv("PGBOT_AI_BASE_URL", "https://bedrock-mantle.us-west-2.api.aws/openai/v1")
+	t.Setenv("QUERYSHIFT_AI_BASE_URL", "https://bedrock-mantle.us-west-2.api.aws/openai/v1")
 	if _, err := Resolve(); err == nil {
 		t.Fatal("region mismatch accepted")
 	}
 
 	// AWS_CREDENTIAL_EXPIRATION (emitted by `aws configure export-credentials`)
 	// bounds the minted token; an unparseable value is refused rather than ignored.
-	t.Setenv("PGBOT_AI_BASE_URL", "")
+	t.Setenv("QUERYSHIFT_AI_BASE_URL", "")
 	t.Setenv("AWS_CREDENTIAL_EXPIRATION", "not-a-time")
 	if _, err := Resolve(); err == nil {
 		t.Fatal("malformed AWS_CREDENTIAL_EXPIRATION accepted")

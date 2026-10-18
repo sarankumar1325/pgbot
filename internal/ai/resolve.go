@@ -16,18 +16,18 @@ import (
 //
 // Precedence:
 //
-//	PGBOT_AI_PROVIDER          explicit: gemini | openai | anthropic | xai | bedrock
+//	QUERYSHIFT_AI_PROVIDER          explicit: gemini | openai | anthropic | xai | bedrock
 //	                           otherwise auto-detected from whichever key is set,
 //	                           OpenAI first to preserve existing behavior
-//	PGBOT_AI_MODEL             model id (else the provider's default)
-//	PGBOT_AI_BASE_URL          endpoint (else the provider's default)
-//	PGBOT_AI_API_KEY           key (else the provider's conventional variable)
-//	PGBOT_AI_REASONING_EFFORT  none|low|medium|high|xhigh|max, for reasoning models
+//	QUERYSHIFT_AI_MODEL             model id (else the provider's default)
+//	QUERYSHIFT_AI_BASE_URL          endpoint (else the provider's default)
+//	QUERYSHIFT_AI_API_KEY           key (else the provider's conventional variable)
+//	QUERYSHIFT_AI_REASONING_EFFORT  none|low|medium|high|xhigh|max, for reasoning models
 //
-// Existing PGBOT_OPENAI_* and PGBOT_GEMINI_* settings remain provider-scoped
+// Existing QUERYSHIFT_OPENAI_* and QUERYSHIFT_GEMINI_* settings remain provider-scoped
 // aliases for the general model and URL overrides.
 func Resolve() (LanguageModel, error) {
-	name := strings.ToLower(envOr("PGBOT_AI_PROVIDER", ""))
+	name := strings.ToLower(envOr("QUERYSHIFT_AI_PROVIDER", ""))
 	if name == "" {
 		// A custom REMOTE endpoint with no provider named is ambiguous in the one
 		// way that matters: auto-detection would pick a wire format and a key
@@ -36,8 +36,8 @@ func Resolve() (LanguageModel, error) {
 		// this host — silently, under --yes. A local endpoint keeps working
 		// unnamed: nothing leaves the machine, and /chat/completions is what
 		// every local server speaks.
-		if base := envOr("PGBOT_AI_BASE_URL", ""); base != "" && !Local(base) {
-			return nil, fmt.Errorf("PGBOT_AI_BASE_URL is set to %s but PGBOT_AI_PROVIDER is not — name the API that endpoint speaks (gemini, anthropic, openai, or xai) so the right key and request format go to it", Host(base))
+		if base := envOr("QUERYSHIFT_AI_BASE_URL", ""); base != "" && !Local(base) {
+			return nil, fmt.Errorf("QUERYSHIFT_AI_BASE_URL is set to %s but QUERYSHIFT_AI_PROVIDER is not — name the API that endpoint speaks (gemini, anthropic, openai, or xai) so the right key and request format go to it", Host(base))
 		}
 		var err error
 		if name, err = detectProvider(); err != nil {
@@ -45,9 +45,9 @@ func Resolve() (LanguageModel, error) {
 		}
 	}
 
-	key := envOr("PGBOT_AI_API_KEY", "")
-	base := envOr("PGBOT_AI_BASE_URL", "")
-	model := envOr("PGBOT_AI_MODEL", "")
+	key := envOr("QUERYSHIFT_AI_API_KEY", "")
+	base := envOr("QUERYSHIFT_AI_BASE_URL", "")
+	model := envOr("QUERYSHIFT_AI_MODEL", "")
 	// Generous because a local model on CPU can take minutes on a full report;
 	// hosted providers answer in seconds and never come near this.
 	httpc := &http.Client{Timeout: 3 * time.Minute}
@@ -59,10 +59,10 @@ func Resolve() (LanguageModel, error) {
 			key = firstEnv("GEMINI_API_KEY", "GOOGLE_API_KEY")
 		}
 		if base == "" {
-			base = envOr("PGBOT_GEMINI_URL", defaultGeminiURL)
+			base = envOr("QUERYSHIFT_GEMINI_URL", defaultGeminiURL)
 		}
 		if model == "" {
-			model = envOr("PGBOT_GEMINI_MODEL", "")
+			model = envOr("QUERYSHIFT_GEMINI_MODEL", "")
 		}
 		p = &GeminiProvider{APIKey: key, BaseURL: trimURL(base), HTTP: httpc}
 
@@ -79,11 +79,14 @@ func Resolve() (LanguageModel, error) {
 		if key == "" {
 			key = firstEnv("AWS_BEARER_TOKEN_BEDROCK")
 		}
+		if model == "" {
+			model = envOr("QUERYSHIFT_AGENT_MODEL", "")
+		}
 		return bedrockModel(model, base, key, httpc)
 
 	case "xai", "grok", "responses":
 		// The Responses API, which xAI documents as its primary interface. Same
-		// endpoint shape at OpenAI, so PGBOT_AI_PROVIDER=responses + an OpenAI key
+		// endpoint shape at OpenAI, so QUERYSHIFT_AI_PROVIDER=responses + an OpenAI key
 		// and base URL works too.
 		label := "xai"
 		if key == "" {
@@ -91,15 +94,15 @@ func Resolve() (LanguageModel, error) {
 		}
 		// Only the endpoint-shaped alias `responses` falls back to the OpenAI key:
 		// with no xAI key it means "the Responses API at OpenAI". An explicit
-		// xai/grok never borrows it — with PGBOT_AI_BASE_URL also set that would
+		// xai/grok never borrows it — with QUERYSHIFT_AI_BASE_URL also set that would
 		// send a key to a vendor it was not issued for.
 		if key == "" && name == "responses" && firstEnv("OPENAI_API_KEY") != "" {
 			key, label = firstEnv("OPENAI_API_KEY"), "openai"
 			if base == "" {
-				base = envOr("PGBOT_OPENAI_URL", defaultOpenAIURL)
+				base = envOr("QUERYSHIFT_OPENAI_URL", defaultOpenAIURL)
 			}
 			if model == "" {
-				model = envOr("PGBOT_OPENAI_MODEL", defaultOpenAIModel)
+				model = envOr("QUERYSHIFT_OPENAI_MODEL", defaultOpenAIModel)
 			}
 		}
 		if base == "" {
@@ -110,7 +113,7 @@ func Resolve() (LanguageModel, error) {
 			BaseURL:         trimURL(base),
 			HTTP:            httpc,
 			Label:           label,
-			ReasoningEffort: envOr("PGBOT_AI_REASONING_EFFORT", ""),
+			ReasoningEffort: envOr("QUERYSHIFT_AI_REASONING_EFFORT", ""),
 		}
 
 	case "openai", "openrouter", "requesty", "opper", "ollama", "openai-compatible":
@@ -130,11 +133,11 @@ func Resolve() (LanguageModel, error) {
 			}
 		}
 		if base == "" {
-			base = envOr("PGBOT_OPENAI_URL", "")
+			base = envOr("QUERYSHIFT_OPENAI_URL", "")
 		}
 		if base == "" {
 			// The alias names the endpoint. Keying this off the raw key variables
-			// alone sent an OpenRouter key handed over as PGBOT_AI_API_KEY to
+			// alone sent an OpenRouter key handed over as QUERYSHIFT_AI_API_KEY to
 			// api.openai.com, and pointed an explicit `ollama` at OpenAI.
 			switch name {
 			case "openrouter":
@@ -146,7 +149,7 @@ func Resolve() (LanguageModel, error) {
 			case "ollama":
 				base = defaultOllamaURL
 			case "openai-compatible":
-				return nil, fmt.Errorf("PGBOT_AI_PROVIDER=openai-compatible needs PGBOT_AI_BASE_URL — a generic service has no default endpoint")
+				return nil, fmt.Errorf("QUERYSHIFT_AI_PROVIDER=openai-compatible needs QUERYSHIFT_AI_BASE_URL — a generic service has no default endpoint")
 			default: // openai, or auto-detected from whichever key exists
 				base = defaultOpenAIURL
 				if os.Getenv("OPENAI_API_KEY") == "" && os.Getenv("OPENROUTER_API_KEY") != "" {
@@ -155,30 +158,30 @@ func Resolve() (LanguageModel, error) {
 			}
 		}
 		if model == "" {
-			model = envOr("PGBOT_OPENAI_MODEL", "")
+			model = envOr("QUERYSHIFT_OPENAI_MODEL", "")
 		}
 		p = &OpenAIProvider{
 			APIKey:          key,
 			BaseURL:         trimURL(base),
 			HTTP:            httpc,
-			ReasoningEffort: envOr("PGBOT_AI_REASONING_EFFORT", ""),
+			ReasoningEffort: envOr("QUERYSHIFT_AI_REASONING_EFFORT", ""),
 		}
 
 	default:
-		return nil, fmt.Errorf("unknown PGBOT_AI_PROVIDER %q (want gemini, openai, anthropic, xai, responses, bedrock, or mantle)", name)
+		return nil, fmt.Errorf("unknown QUERYSHIFT_AI_PROVIDER %q (want gemini, openai, anthropic, xai, responses, bedrock, or mantle)", name)
 	}
 
 	// A local endpoint (Ollama, vLLM, LM Studio) usually has no key at all, and
 	// nothing leaves the machine — don't demand one there.
 	if key == "" && !Local(base) {
-		return nil, fmt.Errorf("no API key for provider %q — set PGBOT_AI_API_KEY (or %s). The key is never read from a flag", name, keyVarsFor(name))
+		return nil, fmt.Errorf("no API key for provider %q — set QUERYSHIFT_AI_API_KEY (or %s). The key is never read from a flag", name, keyVarsFor(name))
 	}
 	return p.LanguageModel(context.Background(), model)
 }
 
 // detectProvider picks a provider from whichever key is present. OpenAI remains
 // first because that was the established precedence before more providers were
-// added. PGBOT_AI_PROVIDER removes any ambiguity when several keys are present.
+// added. QUERYSHIFT_AI_PROVIDER removes any ambiguity when several keys are present.
 func detectProvider() (string, error) {
 	switch {
 	case firstEnv("OPENAI_API_KEY", "OPENROUTER_API_KEY") != "":
@@ -189,13 +192,17 @@ func detectProvider() (string, error) {
 		return "anthropic", nil
 	case firstEnv("XAI_API_KEY", "GROK_API_KEY") != "":
 		return "xai", nil
-	case envOr("PGBOT_AI_API_KEY", "") != "" || Local(envOr("PGBOT_AI_BASE_URL", "")):
+	case firstEnv("AWS_BEARER_TOKEN_BEDROCK") != "":
+		return "bedrock", nil
+	case firstEnv("AWS_ACCESS_KEY_ID") != "" && firstEnv("AWS_SECRET_ACCESS_KEY") != "":
+		return "bedrock", nil
+	case envOr("QUERYSHIFT_AI_API_KEY", "") != "" || Local(envOr("QUERYSHIFT_AI_BASE_URL", "")):
 		// A generic key or a local endpoint with no provider named: /chat/completions
 		// is the safe assumption — it's what every local server speaks.
 		return "openai", nil
 	}
-	return "", fmt.Errorf("no model configured for `pgbot explain` — set one of GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, or XAI_API_KEY " +
-		"(or PGBOT_AI_PROVIDER + PGBOT_AI_API_KEY, or PGBOT_AI_BASE_URL for a local model). Keys are never read from a flag")
+	return "", fmt.Errorf("no model configured — for Bedrock set AWS_BEARER_TOKEN_BEDROCK, or AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY; alternatively set one of GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, or XAI_API_KEY " +
+		"(or QUERYSHIFT_AI_PROVIDER + QUERYSHIFT_AI_API_KEY, or QUERYSHIFT_AI_BASE_URL for a local model). Keys are never read from a flag")
 }
 
 func keyVarsFor(name string) string {
@@ -210,6 +217,8 @@ func keyVarsFor(name string) string {
 		return "REQUESTY_API_KEY"
 	case "opper":
 		return "OPPER_API_KEY"
+	case "bedrock", "mantle":
+		return "AWS_BEARER_TOKEN_BEDROCK or AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY"
 	default:
 		return "OPENAI_API_KEY / OPENROUTER_API_KEY"
 	}

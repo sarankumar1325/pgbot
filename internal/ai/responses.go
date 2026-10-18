@@ -16,7 +16,7 @@ const (
 )
 
 // ResponsesProvider speaks the Responses API (POST /responses) — the newer
-// surface both xAI and OpenAI prefer over /chat/completions. pgbot uses it for
+// surface both xAI and OpenAI prefer over /chat/completions. queryshift uses it for
 // xAI, where it is the documented primary interface, and for OpenAI models on
 // Bedrock Mantle.
 //
@@ -70,7 +70,7 @@ type responsesRequest struct {
 	Input        string `json:"input"`                  // the user turn
 	// Store is explicitly false. The Responses API defaults it to TRUE, which
 	// retains the request server-side for later retrieval — a quiet downgrade of
-	// the disclosure `pgbot explain` asks the user to consent to. We send the
+	// the disclosure `queryshift explain` asks the user to consent to. We send the
 	// findings once and keep nothing on the vendor's side.
 	Store           bool          `json:"store"`
 	MaxOutputTokens *int64        `json:"max_output_tokens,omitempty"`
@@ -174,7 +174,7 @@ func (m *responsesModel) Generate(ctx context.Context, c Call) (*Response, error
 	out := strings.TrimSpace(sb.String())
 	if out == "" {
 		if rr.IncompleteDetails != nil && rr.IncompleteDetails.Reason == "max_output_tokens" {
-			return nil, fmt.Errorf("%s hit the output cap before writing an answer — the model spent it all on internal reasoning; lower $PGBOT_AI_REASONING_EFFORT or raise the cap", m.provider.Name())
+			return nil, fmt.Errorf("%s hit the output cap before writing an answer — the model spent it all on internal reasoning; lower $QUERYSHIFT_AI_REASONING_EFFORT or raise the cap", m.provider.Name())
 		}
 		return nil, fmt.Errorf("%s returned an empty explanation (status: %s)", m.provider.Name(), rr.Status)
 	}

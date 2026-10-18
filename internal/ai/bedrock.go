@@ -12,7 +12,7 @@ package ai
 //
 //	eval "$(aws configure export-credentials --profile prod --format env)"
 //
-// That keeps pgbot's promise: keys only from the environment, no config files
+// That keeps queryshift's promise: keys only from the environment, no config files
 // read, no calls to STS or instance metadata, and one static binary.
 
 import (
@@ -33,7 +33,7 @@ import (
 
 const (
 	// A minted token lives this long at most (the service allows up to 12h;
-	// pgbot makes one call and has no reason to hold a longer-lived secret).
+	// queryshift makes one call and has no reason to hold a longer-lived secret).
 	bedrockTokenTTL = 15 * time.Minute
 	bedrockSTSHost  = "bedrock.amazonaws.com"
 )
@@ -57,7 +57,7 @@ func awsCredentialsFromEnv() (awsCredentials, error) {
 	}
 	if c.AccessKeyID == "" || c.SecretAccessKey == "" {
 		return c, errors.New("no AWS credentials for Bedrock — set AWS_BEARER_TOKEN_BEDROCK (a Bedrock API key), " +
-			"or AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (and AWS_SESSION_TOKEN) and pgbot mints a short-lived token; " +
+			"or AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (and AWS_SESSION_TOKEN) and queryshift mints a short-lived token; " +
 			"a profile or SSO login exports them with: eval \"$(aws configure export-credentials --format env)\"")
 	}
 	if exp := envOr("AWS_CREDENTIAL_EXPIRATION", ""); exp != "" {
@@ -105,7 +105,7 @@ func bedrockModel(model, base, key string, httpc *http.Client) (LanguageModel, e
 		p := &AnthropicProvider{APIKey: key, BaseURL: base, HTTP: httpc, Label: "bedrock"}
 		return p.LanguageModel(context.Background(), model)
 	}
-	p := &ResponsesProvider{APIKey: key, BaseURL: base, HTTP: httpc, Label: "bedrock", ReasoningEffort: envOr("PGBOT_AI_REASONING_EFFORT", "")}
+	p := &ResponsesProvider{APIKey: key, BaseURL: base, HTTP: httpc, Label: "bedrock", ReasoningEffort: envOr("QUERYSHIFT_AI_REASONING_EFFORT", "")}
 	return p.LanguageModel(context.Background(), model)
 }
 

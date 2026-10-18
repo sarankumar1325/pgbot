@@ -13,7 +13,7 @@ import (
 const (
 	// A moving alias, on purpose: pinned versions get retired (e.g. gemini-2.5-flash
 	// now 404s for new projects), and an explanation feature doesn't need a frozen
-	// model. Override with $PGBOT_AI_MODEL to pin one.
+	// model. Override with $QUERYSHIFT_AI_MODEL to pin one.
 	defaultGeminiModel = "gemini-flash-latest"
 	defaultGeminiURL   = "https://generativelanguage.googleapis.com/v1beta"
 )

@@ -7,10 +7,10 @@ import (
 	"github.com/invopop/jsonschema"
 )
 
-// SchemaVersion is the semver of the `pgbot advise --json` contract.
+// SchemaVersion is the semver of the `queryshift advise --json` contract.
 const SchemaVersion = "1.0.0"
 
-// Report is the shape of `pgbot advise --json` (and the MCP suggest_indexes
+// Report is the shape of `queryshift advise --json` (and the MCP suggest_indexes
 // tool). Kept as a type so the JSON Schema is generated, not hand-written.
 type Report struct {
 	Database        string           `json:"database"`
@@ -28,8 +28,8 @@ type Report struct {
 func ReportSchema() []byte {
 	r := &jsonschema.Reflector{DoNotReference: false}
 	s := r.Reflect(&Report{})
-	s.ID = jsonschema.ID("https://pgbot.dev/schema/pgbot-advise-" + SchemaVersion + ".json")
-	s.Description = "pgbot advise --json — planner-validated index recommendations (hypopg). Nothing is built."
+	s.ID = jsonschema.ID("https://raw.githubusercontent.com/sarankumar1325/queryshift/main/schema/queryshift-advise-" + SchemaVersion + ".json")
+	s.Description = "queryshift advise --json — planner-validated index recommendations (hypopg). Nothing is built."
 	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		panic(err)

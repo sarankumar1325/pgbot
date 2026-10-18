@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // systemPrompt hard-constrains the model to the one job it's allowed: explaining
-// facts pgbot already computed, in a terse spoken-style shape. The findings are
+// facts queryshift already computed, in a terse spoken-style shape. The findings are
 // ground truth; the model may not add to them, and it MUST carry every caveat.
 const systemPrompt = `You are a senior PostgreSQL expert giving a terse, spoken-style diagnosis to a
-developer who is not a DBA. A tool called pgbot has already analyzed the database and computed the
+developer who is not a DBA. A tool called queryshift has already analyzed the database and computed the
 findings below DETERMINISTICALLY — they are facts, not guesses. Explain them; never add new ones.
 
 Write PLAIN TEXT in this exact shape — NO markdown (no #, no *, no bullet characters, no bold, no
@@ -102,15 +102,15 @@ func payloadJSON(c *model.Context) string {
 // BuildExplainPrompt returns the (system, user) prompt for a Context. The user
 // prompt is the curated JSON payload; nothing PII-bearing is included.
 func BuildExplainPrompt(c *model.Context) (system, user string) {
-	return systemPrompt, "Here is the pgbot report as JSON. Explain it per your rules.\n\n" + payloadJSON(c)
+	return systemPrompt, "Here is the queryshift report as JSON. Explain it per your rules.\n\n" + payloadJSON(c)
 }
 
 // BuildAskPrompt grounds a user's question in the same report. The model must
 // answer ONLY from the report and its rules — it can't reach into the database.
 func BuildAskPrompt(c *model.Context, question string) (system, user string) {
 	user = "A user asked: \"" + question + "\"\n\n" +
-		"Answer it using ONLY the pgbot report below and your rules. If the report doesn't\n" +
-		"contain the answer, say what pgbot would need to collect to find out — do not guess.\n\n" +
+		"Answer it using ONLY the queryshift report below and your rules. If the report doesn't\n" +
+		"contain the answer, say what queryshift would need to collect to find out — do not guess.\n\n" +
 		payloadJSON(c)
 	return systemPrompt, user
 }
