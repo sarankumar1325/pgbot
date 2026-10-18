@@ -1,19 +1,19 @@
 #!/bin/sh
-# pgbot skill installer. Downloads the postgres-diagnostics SKILL.md into your
-# Claude skills directory so an agent knows how to use pgbot well.
+# queryshift skill installer. Downloads the postgres-diagnostics SKILL.md into your
+# Claude skills directory so an agent knows how to use queryshift well.
 #
-#   curl -fsSL https://pgbot.dev/skill | sh
+#   curl -fsSL https://raw.githubusercontent.com/sarankumar1325/queryshift/main/skills/install.sh | sh
 #
 # Env:
-#   PGBOT_SKILL      skill name to install (default: postgres-diagnostics)
-#   PGBOT_SKILL_DIR  target skills dir    (default: ~/.claude/skills)
+#   QUERYSHIFT_SKILL      skill name to install (default: postgres-diagnostics)
+#   QUERYSHIFT_SKILL_DIR  target skills dir    (default: ~/.claude/skills)
 set -eu
 
-REPO="pgrundev/pgbot"
-SKILL="${PGBOT_SKILL:-postgres-diagnostics}"
-SKILL_DIR="${PGBOT_SKILL_DIR:-$HOME/.claude/skills}"
+REPO="sarankumar1325/queryshift"
+SKILL="${QUERYSHIFT_SKILL:-postgres-diagnostics}"
+SKILL_DIR="${QUERYSHIFT_SKILL_DIR:-$HOME/.claude/skills}"
 
-say() { printf 'pgbot-skill: %s\n' "$1" >&2; }
+say() { printf 'queryshift-skill: %s\n' "$1" >&2; }
 die() { say "error: $1"; exit 1; }
 
 command -v curl >/dev/null 2>&1 || die "curl is required"
@@ -30,4 +30,4 @@ head -n1 "$dest/SKILL.md" | grep -q '^---' || die "downloaded file is not a SKIL
 
 say "installed $dest/SKILL.md"
 say "start a new agent session to pick it up. Pair it with the tools:"
-say "  claude mcp add pgbot -e DATABASE_URL=\"postgres://…\" -- pgbot mcp"
+say "  claude mcp add queryshift -e DATABASE_URL=\"postgres://…\" -- queryshift mcp"
