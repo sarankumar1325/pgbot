@@ -5,9 +5,9 @@ import (
 	_ "embed"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/conn"
-	"github.com/pgrundev/pgbot/internal/model"
-	"github.com/pgrundev/pgbot/internal/rate"
+	"github.com/sarankumar1325/queryshift/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/rate"
 )
 
 //go:embed sql/io_bgwriter.sql

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/conn"
-	"github.com/pgrundev/pgbot/internal/model"
-	"github.com/pgrundev/pgbot/internal/rate"
+	"github.com/sarankumar1325/queryshift/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/rate"
 )
 
 //go:embed sql/queries.sql
@@ -56,8 +56,8 @@ func (queriesCollector) Sample(ctx context.Context, t *conn.Target, caps conn.Ca
 	// pg_stat_statements is a set-returning function: every row (up to ~4 KB of
 	// query text) is materialized in a tuplestore before ORDER BY/LIMIT, and the
 	// window sum() OVER () keeps all of them. At the default work_mem=4MB and a
-	// few thousand tracked statements that is several MB of temp file per pgbot
-	// run — landing inside pgbot's own sample window, where the health collector
+	// few thousand tracked statements that is several MB of temp file per queryshift
+	// run — landing inside queryshift's own sample window, where the health collector
 	// reads it back as temp_bytes_per_sec and the tune rule recommends raising
 	// work_mem for it. A transaction-local work_mem keeps this read in memory.
 	//

@@ -5,8 +5,8 @@ import (
 	_ "embed"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/conn"
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 //go:embed sql/activity.sql
@@ -57,7 +57,11 @@ func (activityCollector) Sample(ctx context.Context, t *conn.Target, _ conn.Capa
 	out.Conns, _ = queryMany[connRow](ctx, t, t.ExcludeSelf(sqlConnBreakdown)) // best-effort breakdown
 	// Autovacuum worker count + longest-running worker (A19), best-effort.
 	out.AVWorker, _ = queryOne[avRow](ctx, t, `SELECT count(*) FILTER (WHERE backend_type = 'autovacuum worker')::int AS workers,
-		coalesce(max(extract(epoch FROM now() - xact_start)) FILTER (WHERE backend_type = 'autovacuum worker'), 0)::float8 AS max_age
+		coalesce(max(extract(epoch FROM now() - xact_start)) FILTER (
+			WHERE backend_type = 'autovacuum worker'
+			AND xact_start IS NOT NULL
+			AND isfinite(xact_start)
+		), 0)::float8 AS max_age
 		FROM pg_stat_activity`)
 	return out, nil
 }

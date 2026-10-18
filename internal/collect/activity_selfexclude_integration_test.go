@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/collect"
-	"github.com/pgrundev/pgbot/internal/conn"
-	"github.com/pgrundev/pgbot/internal/model"
 	"github.com/pgrundev/pggo"
+	"github.com/sarankumar1325/queryshift/internal/collect"
+	"github.com/sarankumar1325/queryshift/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // End-to-end wiring guard for the observer-exclusion class, found walking the
@@ -37,20 +37,20 @@ func TestIntegration_selfExclusion_wiring(t *testing.T) {
 	}
 	defer target.Close()
 
-	// The connection breakdown reads pg_stat_activity via ExcludeSelf: pgbot must
+	// The connection breakdown reads pg_stat_activity via ExcludeSelf: queryshift must
 	// never list its own pool connections as a connection source.
-	if appInConnections(run(target).Activity.Connections, "pgbot") {
-		t.Error("pgbot must not list its own connections in the breakdown (conn_breakdown must route through ExcludeSelf)")
+	if appInConnections(run(target).Activity.Connections, "queryshift") {
+		t.Error("queryshift must not list its own connections in the breakdown (conn_breakdown must route through ExcludeSelf)")
 	}
 
-	// Hold a real idle-in-transaction session; pgbot must count it. Counting is a
+	// Hold a real idle-in-transaction session; queryshift must count it. Counting is a
 	// lower bound (background activity can only add), so this stays robust while
 	// still failing if the activity collector stopped counting real sessions.
 	cfg, err := pggo.ParseConfig(d)
 	if err != nil {
 		t.Fatalf("parse dsn: %v", err)
 	}
-	cfg.RuntimeParams["application_name"] = "pgbot_selftest_app"
+	cfg.RuntimeParams["application_name"] = "queryshift_selftest_app"
 	held, err := pggo.ConnectConfig(ctx, cfg)
 	if err != nil {
 		t.Fatalf("hold connect: %v", err)
