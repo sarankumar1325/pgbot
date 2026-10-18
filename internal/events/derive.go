@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // inferredConfidence is used for schema changes we only know happened somewhere

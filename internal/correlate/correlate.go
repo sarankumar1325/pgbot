@@ -1,6 +1,6 @@
-// Package correlate turns pgbot's index observations into an actionable,
-// confidence-graded payload an agent can act on WITHOUT pgbot ever reading the
-// repository. pgbot knows the database side (which index, which columns, whether
+// Package correlate turns queryshift's index observations into an actionable,
+// confidence-graded payload an agent can act on WITHOUT queryshift ever reading the
+// repository. queryshift knows the database side (which index, which columns, whether
 // it's provable from the catalog alone); the agent has the code. This package
 // emits what to search for and exactly how to interpret the result.
 //
@@ -24,7 +24,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // Confidence is the strength of the "this index is droppable" claim.
@@ -112,7 +112,7 @@ type Report struct {
 	Note              string        `json:"note"`
 }
 
-const reportNote = "pgbot never reads your repository and never drops anything. " +
+const reportNote = "queryshift never reads your repository and never drops anything. " +
 	"catalog_proven = the catalog alone justifies the drop, still subject to the guard. " +
 	"needs_code_check = search the terms per the instruction, then apply if_found/if_not_found, subject to the guard. " +
 	"inconclusive = do NOT drop on this evidence, and an empty code search does not change that."
@@ -394,7 +394,7 @@ func corroborationNote(v PriorVerdict, winDays *float64) string {
 }
 
 // searchTermsFor emits, for each bare column, the camelCase / snake_case /
-// PascalCase / CONSTANT_CASE variants plus the raw name, deduped — pgbot knows
+// PascalCase / CONSTANT_CASE variants plus the raw name, deduped — queryshift knows
 // the database name; the agent shouldn't have to guess the codebase convention.
 func searchTermsFor(cols []string) []string {
 	var out []string
