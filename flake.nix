@@ -24,12 +24,12 @@
     in
     {
       overlays.default = final: prev: {
-        pgbot = final.callPackage ./package.nix { };
+        queryshift = final.callPackage ./package.nix { };
       };
 
       packages = forAllSystems (pkgs: rec {
-        pgbot = pkgs.pgbot;
-        default = pgbot;
+        queryshift = pkgs.queryshift;
+        default = queryshift;
       });
 
       devShells = forAllSystems (pkgs: {
