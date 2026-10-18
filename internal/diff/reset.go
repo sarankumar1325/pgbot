@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // StatsResetBetween reports whether the cumulative statistics were reset (or the

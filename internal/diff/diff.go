@@ -1,14 +1,14 @@
 // Package diff turns a current Context plus a stored baseline into
-// model.Deltas — the "what changed and why it matters" layer that makes pgbot
+// model.Deltas — the "what changed and why it matters" layer that makes queryshift
 // more than a stats reader. Thresholds are materiality gates so we surface real
-// movement, not float noise. This is also the raw material for `pgbot why`.
+// movement, not float noise. This is also the raw material for `queryshift why`.
 package diff
 
 import (
 	"fmt"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // Baseline is the minimal shape diff needs from a stored snapshot.

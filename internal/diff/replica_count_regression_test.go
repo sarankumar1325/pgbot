@@ -3,7 +3,7 @@ package diff
 import (
 	"testing"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 func TestReplicaCountLossControls(t *testing.T) {
