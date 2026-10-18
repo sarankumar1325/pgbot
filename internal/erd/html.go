@@ -157,7 +157,7 @@ func RenderHTML(s Schema) string {
 	}
 
 	return `<!doctype html><html><head><meta charset="utf-8">
-<title>schema — pgbot erd</title>
+<title>schema — queryshift erd</title>
 <style>
   body{margin:0;background:#0b0d0f;color:#dfe4ea;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow:hidden}
   header{padding:10px 16px;font-size:13px;color:#8b95a3;border-bottom:1px solid #262c33}
@@ -173,7 +173,7 @@ func RenderHTML(s Schema) string {
   .edge{fill:none;stroke:#5a6472;stroke-width:1.5;stroke-dasharray:5 4}
   .idx{fill:#8b95a3;font-size:12px}
 </style></head><body>
-<header><b>pgbot erd</b> · ` + esc(s.headerLine()) + ` — drag to pan, scroll to zoom · generated locally, nothing leaves this file</header>
+<header><b>queryshift erd</b> · ` + esc(s.headerLine()) + ` — drag to pan, scroll to zoom · generated locally, nothing leaves this file</header>
 <svg id="view" viewBox="0 0 ` + fmt.Sprintf("%.0f %.0f", totalW, totalH) + `">
 <defs><marker id="arr" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto">
 <path d="M9 0 L0 4 L9 8" fill="none" stroke="#5a6472" stroke-width="1.5"/></marker></defs>

@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/pgrundev/pgbot/internal/render"
+	"github.com/sarankumar1325/queryshift/internal/render"
 )
 
 type Column struct {
