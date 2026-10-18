@@ -41,7 +41,7 @@ CGO_ENABLED=0 go test ./...
 # Every target .goreleaser.yaml ships, windows included.
 for goos in linux darwin windows; do
   for goarch in amd64 arm64; do
-    CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -o /dev/null ./cmd/pgbot
+    CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -o /dev/null ./cmd/queryshift
   done
 done
 popd >/dev/null

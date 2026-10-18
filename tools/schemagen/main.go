@@ -1,4 +1,4 @@
-// Command schemagen generates the JSON Schema for pgbot's public JSON contracts
+// Command schemagen generates the JSON Schema for queryshift's public JSON contracts
 // from the Go types themselves — a hand-written schema drifts the moment a field
 // is added, so this is the single source. Run `go run ./tools/schemagen`; the
 // committed output under schema/ is diffed against a fresh generation by
@@ -10,9 +10,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/pgrundev/pgbot/internal/advisor"
-	"github.com/pgrundev/pgbot/internal/findings"
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/advisor"
+	"github.com/sarankumar1325/queryshift/internal/findings"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 func main() {
@@ -28,8 +28,8 @@ func main() {
 		name string
 		blob []byte
 	}{
-		{fmt.Sprintf("pgbot-context-%s.json", model.SchemaVersion), model.ContextSchema()},
-		{fmt.Sprintf("pgbot-advise-%s.json", advisor.SchemaVersion), advisor.ReportSchema()},
+		{fmt.Sprintf("queryshift-context-%s.json", model.SchemaVersion), model.ContextSchema()},
+		{fmt.Sprintf("queryshift-advise-%s.json", advisor.SchemaVersion), advisor.ReportSchema()},
 	}
 	for _, w := range writes {
 		p := filepath.Join(dir, w.name)
