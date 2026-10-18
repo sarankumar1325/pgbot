@@ -1,12 +1,13 @@
-# Contributing to pgbot
+# Contributing to QueryShift
 
-Thanks for helping. pgbot is a read-only PostgreSQL diagnostics CLI; a few
-invariants are load-bearing, so please read the short list below before a PR.
+Thanks for helping. QueryShift is a multi-agent SQL modernization system backed
+by a read-only PostgreSQL evidence engine; a few invariants are load-bearing, so
+please read the short list below before a PR.
 
 ## Build and test
 
 ```bash
-go build ./cmd/pgbot            # static binary (CGO stays off)
+go build ./cmd/queryshift            # static binary (CGO stays off)
 go test ./...                  # unit tests; DB-dependent ones self-skip
 scripts/gate.sh                # the real gate — builds HEAD, not your working tree
 ```
@@ -16,12 +17,12 @@ in an isolated clone across every released target (linux, darwin and windows ×
 amd64, arm64). Run it before pushing — a green working-tree `go test` can hide a
 partial commit that doesn't compile.
 
-Integration tests run against a real database when `PGBOT_TEST_DSN` (a superuser
-DSN unlocks the doc-verify guard via `PGBOT_TEST_SUPERUSER_DSN`) is set:
+Integration tests run against a real database when `QUERYSHIFT_TEST_DSN` (a superuser
+DSN unlocks the doc-verify guard via `QUERYSHIFT_TEST_SUPERUSER_DSN`) is set:
 
 ```bash
 docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=pw postgres:18 -c shared_preload_libraries=pg_stat_statements
-PGBOT_TEST_SUPERUSER_DSN=postgres://postgres:pw@127.0.0.1:5432/postgres go test ./internal/collect/ -run Integration
+QUERYSHIFT_TEST_SUPERUSER_DSN=postgres://postgres:pw@127.0.0.1:5432/postgres go test ./internal/collect/ -run Integration
 ```
 
 CI also runs `gofmt -l`, `go vet`, `go test -race`, `golangci-lint`, and
@@ -29,7 +30,7 @@ CI also runs `gofmt -l`, `go vet`, `go test -race`, `golangci-lint`, and
 
 ## The invariants (please don't break these)
 
-- **Read-only, always.** pgbot pins `default_transaction_read_only`, a 15s
+- **Read-only, always.** queryshift pins `default_transaction_read_only`, a 15s
   `statement_timeout`, and a 2s `lock_timeout`, and runs everything inside
   `BEGIN READ ONLY`. It never writes to the target.
 - **Never execute an inspected query.** Only plain `EXPLAIN` is allowed —
