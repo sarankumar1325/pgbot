@@ -139,7 +139,7 @@ func TestFormatForFile(t *testing.T) {
 	}
 }
 
-// Severity → pgbot level, independent of source format.
+// Severity → queryshift level, independent of source format.
 func TestLevelFor(t *testing.T) {
 	cases := []struct {
 		sev, msg string
@@ -156,7 +156,7 @@ func TestLevelFor(t *testing.T) {
 		{"NOTICE", "x", LevelInfo},
 		{"DEBUG1", "x", LevelInfo},
 		// pgAudit writes its trail as LOG lines prefixed AUDIT: — they get
-		// their own level so `pgbot logs --level audit` reads the audit trail.
+		// their own level so `queryshift logs --level audit` reads the audit trail.
 		{"LOG", "AUDIT: SESSION,1,1,READ,SELECT,,,SELECT * FROM accounts,<none>", LevelAudit},
 	}
 	for _, c := range cases {

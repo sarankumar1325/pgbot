@@ -33,7 +33,7 @@ func FormatForFile(name string) Format {
 	}
 }
 
-// Level is pgbot's four-way classification, one per filter toggle.
+// Level is queryshift's four-way classification, one per filter toggle.
 type Level string
 
 const (
@@ -48,7 +48,7 @@ const (
 type Entry struct {
 	Time     time.Time `json:"time"`
 	Severity string    `json:"severity"` // PostgreSQL's own: LOG, WARNING, ERROR, …
-	Level    Level     `json:"level"`    // pgbot's: query, info, warn, error
+	Level    Level     `json:"level"`    // queryshift's: query, info, warn, error
 	Message  string    `json:"message"`
 	Detail   string    `json:"detail,omitempty"` // DETAIL/HINT/STATEMENT/CONTEXT continuations, joined
 	User     string    `json:"user,omitempty"`
@@ -58,7 +58,7 @@ type Entry struct {
 }
 
 // levelFor maps a PostgreSQL severity (plus the message, which is what
-// distinguishes a query line from any other LOG line) to a pgbot level.
+// distinguishes a query line from any other LOG line) to a queryshift level.
 func levelFor(severity, message string) Level {
 	switch severity {
 	case "ERROR", "FATAL", "PANIC":
