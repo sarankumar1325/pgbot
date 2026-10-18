@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // Apply enforces the config over already-computed findings, in the precedence

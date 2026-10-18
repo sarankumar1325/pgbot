@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 func fixedNow() time.Time { return time.Date(2026, 8, 16, 12, 0, 0, 0, time.UTC) }

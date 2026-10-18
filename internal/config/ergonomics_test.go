@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
-// DoD 12: `pgbot config init` output must load cleanly under `pgbot config check`
+// DoD 12: `queryshift config init` output must load cleanly under `queryshift config check`
 // (i.e. Load with zero warnings). Every finding is seeded as a COMMENTED rule, so
 // the active config is just schema=1.
 func TestInitTemplate_roundTripsCleanly(t *testing.T) {
@@ -24,8 +24,8 @@ func TestInitTemplate_roundTripsCleanly(t *testing.T) {
 
 	dir := t.TempDir()
 	t.Chdir(dir)
-	t.Setenv("PGBOT_CONFIG", "")
-	p := filepath.Join(dir, ".pgbot.toml")
+	t.Setenv("QUERYSHIFT_CONFIG", "")
+	p := filepath.Join(dir, ".queryshift.toml")
 	if err := os.WriteFile(p, []byte(tmpl), 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -1,4 +1,4 @@
-// Package config loads .pgbot.toml — the committed-to-the-repo file that lets a
+// Package config loads .queryshift.toml — the committed-to-the-repo file that lets a
 // team override thresholds, remap severities, and suppress specific findings so
 // noise never trains people to ignore the severity column (B2). It is
 // deliberately conservative: it refuses to read anything credential-shaped, and
@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/pgrundev/pgbot/internal/findings"
+	"github.com/sarankumar1325/queryshift/internal/findings"
 )
 
 // CurrentSchema is the config schema this binary understands.
@@ -24,7 +24,7 @@ const CurrentSchema = 1
 // expiryLayout is the date format for an ignore rule's `expires`.
 const expiryLayout = "2006-01-02"
 
-// forbiddenKeys are credential-shaped keys pgbot REFUSES to read from a config
+// forbiddenKeys are credential-shaped keys queryshift REFUSES to read from a config
 // file. The whole point of the file is that it gets committed to a repository;
 // the failure mode is a DSN or password ending up in git history. Matched
 // case-insensitively on the last element of any key path, so [x] dsn = "…" and a
@@ -120,13 +120,13 @@ func Load(explicit string) (*Config, error) {
 	// SECURITY (B2-1): refuse credentials before touching anything else.
 	if bad := firstForbidden(md); bad != "" {
 		return nil, fmt.Errorf(
-			"config %s contains a credential-shaped key %q — pgbot never reads a connection string or password from a config file, because this file is meant to be committed. Pass the connection via --dsn or the PGBOT_DSN environment variable instead",
+			"config %s contains a credential-shaped key %q — queryshift never reads a connection string or password from a config file, because this file is meant to be committed. Pass the connection via --dsn or the QUERYSHIFT_DSN environment variable instead",
 			pth, bad)
 	}
 
 	if r.Schema != 0 && r.Schema != CurrentSchema {
 		cfg.Warnings = append(cfg.Warnings, fmt.Sprintf(
-			"schema = %d but this pgbot understands schema %d; newer keys may be ignored", r.Schema, CurrentSchema))
+			"schema = %d but this queryshift understands schema %d; newer keys may be ignored", r.Schema, CurrentSchema))
 	}
 	if r.Schema != 0 {
 		cfg.Schema = r.Schema
@@ -158,7 +158,7 @@ func Load(explicit string) (*Config, error) {
 			continue
 		}
 		if !findings.KnownID(ig.Finding) {
-			// Keep it (forward-compatible: a newer pgbot may know it) but warn — a
+			// Keep it (forward-compatible: a newer queryshift may know it) but warn — a
 			// typo'd id that silently never matches is the exact failure this exists
 			// to prevent.
 			cfg.Warnings = append(cfg.Warnings, fmt.Sprintf("[[ignore]] finding %q is not a known finding id (typo?) — kept but it will never match", ig.Finding))
@@ -183,7 +183,7 @@ func Load(explicit string) (*Config, error) {
 }
 
 // discover resolves the config path by precedence (first hit wins). An explicit
-// --config or PGBOT_CONFIG that can't be read is a hard error — never a silent
+// --config or QUERYSHIFT_CONFIG that can't be read is a hard error — never a silent
 // fall-through to a different file.
 func discover(explicit string) (string, error) {
 	if explicit != "" {
@@ -192,22 +192,22 @@ func discover(explicit string) (string, error) {
 		}
 		return explicit, nil
 	}
-	if p := os.Getenv("PGBOT_CONFIG"); p != "" {
+	if p := os.Getenv("QUERYSHIFT_CONFIG"); p != "" {
 		if err := readable(p); err != nil {
-			return "", fmt.Errorf("PGBOT_CONFIG=%s: %w", p, err)
+			return "", fmt.Errorf("QUERYSHIFT_CONFIG=%s: %w", p, err)
 		}
 		return p, nil
 	}
-	if p := searchUp(".pgbot.toml"); p != "" {
+	if p := searchUp(".queryshift.toml"); p != "" {
 		return p, nil
 	}
 	if base := os.Getenv("XDG_CONFIG_HOME"); base != "" {
-		if p := filepath.Join(base, "pgbot", "config.toml"); exists(p) {
+		if p := filepath.Join(base, "queryshift", "config.toml"); exists(p) {
 			return p, nil
 		}
 	}
 	if home, err := os.UserHomeDir(); err == nil {
-		if p := filepath.Join(home, ".config", "pgbot", "config.toml"); exists(p) {
+		if p := filepath.Join(home, ".config", "queryshift", "config.toml"); exists(p) {
 			return p, nil
 		}
 	}
@@ -215,7 +215,7 @@ func discover(explicit string) (string, error) {
 }
 
 // searchUp walks from the cwd to the filesystem root looking for name, so a
-// .pgbot.toml at a repo root is found from any subdirectory.
+// .queryshift.toml at a repo root is found from any subdirectory.
 func searchUp(name string) string {
 	dir, err := os.Getwd()
 	if err != nil {

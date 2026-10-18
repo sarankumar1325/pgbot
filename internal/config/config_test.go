@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pgrundev/pgbot/internal/findings"
+	"github.com/sarankumar1325/queryshift/internal/findings"
 )
 
 // write a config file and return its path.
@@ -20,10 +20,10 @@ func writeCfg(t *testing.T, dir, name, body string) string {
 }
 
 func TestLoad_defaultsWhenNoFile(t *testing.T) {
-	// A cwd with no .pgbot.toml, and env pointing nowhere.
+	// A cwd with no .queryshift.toml, and env pointing nowhere.
 	dir := t.TempDir()
 	t.Chdir(dir)
-	t.Setenv("PGBOT_CONFIG", "")
+	t.Setenv("QUERYSHIFT_CONFIG", "")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "empty"))
 	t.Setenv("HOME", filepath.Join(dir, "empty"))
 
@@ -42,20 +42,20 @@ func TestLoad_defaultsWhenNoFile(t *testing.T) {
 func TestDiscover_precedence(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	// A .pgbot.toml two directories up should be found from a nested cwd.
-	writeCfg(t, dir, ".pgbot.toml", "schema = 1\n")
+	// A .queryshift.toml two directories up should be found from a nested cwd.
+	writeCfg(t, dir, ".queryshift.toml", "schema = 1\n")
 	nested := filepath.Join(dir, "a", "b")
 	if err := os.MkdirAll(nested, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(nested)
-	t.Setenv("PGBOT_CONFIG", "")
+	t.Setenv("QUERYSHIFT_CONFIG", "")
 
 	cfg, err := Load("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Source == "" || !strings.HasSuffix(cfg.Source, ".pgbot.toml") {
+	if cfg.Source == "" || !strings.HasSuffix(cfg.Source, ".queryshift.toml") {
 		t.Errorf("upward search failed, source=%q", cfg.Source)
 	}
 
@@ -64,15 +64,15 @@ func TestDiscover_precedence(t *testing.T) {
 		t.Error("--config to a missing file must be a hard error")
 	}
 
-	// PGBOT_CONFIG wins over the upward search.
+	// QUERYSHIFT_CONFIG wins over the upward search.
 	explicit := writeCfg(t, dir, "other.toml", "schema = 1\n[severity]\nunused_indexes = \"info\"\n")
-	t.Setenv("PGBOT_CONFIG", explicit)
+	t.Setenv("QUERYSHIFT_CONFIG", explicit)
 	cfg, err = Load("")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cfg.Source != explicit {
-		t.Errorf("PGBOT_CONFIG should win, got source=%q", cfg.Source)
+		t.Errorf("QUERYSHIFT_CONFIG should win, got source=%q", cfg.Source)
 	}
 	if cfg.Severity["unused_indexes"] != "info" {
 		t.Errorf("severity remap not parsed: %+v", cfg.Severity)
@@ -83,13 +83,13 @@ func TestDiscover_precedence(t *testing.T) {
 func TestLoad_refusesCredentialKey(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	t.Setenv("PGBOT_CONFIG", "")
+	t.Setenv("QUERYSHIFT_CONFIG", "")
 	for _, body := range []string{
 		"dsn = \"postgres://u:p@h/db\"\n",
 		"password = \"hunter2\"\n",
 		"[connection]\nurl = \"postgres://…\"\n",
 	} {
-		p := writeCfg(t, dir, ".pgbot.toml", body)
+		p := writeCfg(t, dir, ".queryshift.toml", body)
 		_, err := Load(p)
 		if err == nil {
 			t.Errorf("config with credential key must be rejected: %q", body)
@@ -104,8 +104,8 @@ func TestLoad_refusesCredentialKey(t *testing.T) {
 func TestLoad_unknownFindingWarnsButLoads(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	t.Setenv("PGBOT_CONFIG", "")
-	p := writeCfg(t, dir, ".pgbot.toml", `
+	t.Setenv("QUERYSHIFT_CONFIG", "")
+	p := writeCfg(t, dir, ".queryshift.toml", `
 schema = 1
 [severity]
 nonexistent_finding = "info"
@@ -129,8 +129,8 @@ reason = "typo"
 func TestLoad_thresholdOverrides(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	t.Setenv("PGBOT_CONFIG", "")
-	p := writeCfg(t, dir, ".pgbot.toml", `
+	t.Setenv("QUERYSHIFT_CONFIG", "")
+	p := writeCfg(t, dir, ".queryshift.toml", `
 schema = 1
 [thresholds]
 unused_index_min_size_mb = 100
