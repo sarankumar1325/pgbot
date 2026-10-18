@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/collect"
-	"github.com/pgrundev/pgbot/internal/conn"
-	"github.com/pgrundev/pgbot/internal/correlate"
-	"github.com/pgrundev/pgbot/internal/model"
 	"github.com/pgrundev/pggo"
+	"github.com/sarankumar1325/queryshift/internal/collect"
+	"github.com/sarankumar1325/queryshift/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/correlate"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // TestIntegration_indexCorrelation exercises the new index attributes (method,
@@ -21,9 +21,9 @@ import (
 // The plain-btree → needs_code_check grade depends on a warm window, so it is only
 // asserted when the window isn't cold.
 func TestIntegration_indexCorrelation(t *testing.T) {
-	d := os.Getenv("PGBOT_TEST_SUPERUSER_DSN")
+	d := os.Getenv("QUERYSHIFT_TEST_SUPERUSER_DSN")
 	if d == "" {
-		t.Skip("set PGBOT_TEST_SUPERUSER_DSN (a superuser DSN) to run the index-correlation test")
+		t.Skip("set QUERYSHIFT_TEST_SUPERUSER_DSN (a superuser DSN) to run the index-correlation test")
 	}
 	ctx := context.Background()
 	admin, err := pggo.Connect(ctx, d)
@@ -32,7 +32,7 @@ func TestIntegration_indexCorrelation(t *testing.T) {
 	}
 	defer admin.Close()
 
-	// A table big enough that its indexes cross pgbot's 16 KB collector floor, with
+	// A table big enough that its indexes cross queryshift's 16 KB collector floor, with
 	// one of each shape the classifier distinguishes.
 	if _, err := admin.SimpleQuery(ctx, `
 		DROP TABLE IF EXISTS public.corr_job, public.corr_ri;

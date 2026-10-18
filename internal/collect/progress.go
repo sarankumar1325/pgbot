@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/conn"
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // progress = the pg_stat_progress_* views unioned into one list of in-flight

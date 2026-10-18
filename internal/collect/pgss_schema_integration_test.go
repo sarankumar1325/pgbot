@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/collect"
-	"github.com/pgrundev/pgbot/internal/conn"
-	"github.com/pgrundev/pgbot/internal/model"
 	"github.com/pgrundev/pggo"
+	"github.com/sarankumar1325/queryshift/internal/collect"
+	"github.com/sarankumar1325/queryshift/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // Issue #10: pg_stat_statements installed outside public (Supabase's
@@ -19,11 +19,11 @@ import (
 // extension (it is relocatable) to a schema that is NOT on anyone's search_path,
 // runs the collectors as the read-only role, and requires the queries section to
 // be fully populated. Needs the superuser DSN to move the extension; the read
-// path runs as PGBOT_TEST_DSN exactly as a user would.
+// path runs as QUERYSHIFT_TEST_DSN exactly as a user would.
 func TestIntegration_pgssInNonDefaultSchema(t *testing.T) {
-	su := os.Getenv("PGBOT_TEST_SUPERUSER_DSN")
+	su := os.Getenv("QUERYSHIFT_TEST_SUPERUSER_DSN")
 	if su == "" {
-		t.Skip("set PGBOT_TEST_SUPERUSER_DSN (a superuser DSN) to run the relocated-extension test")
+		t.Skip("set QUERYSHIFT_TEST_SUPERUSER_DSN (a superuser DSN) to run the relocated-extension test")
 	}
 	ro := dsn(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -52,7 +52,7 @@ func TestIntegration_pgssInNonDefaultSchema(t *testing.T) {
 	// Move it. USAGE is granted to PUBLIC (as Supabase does for `extensions`), so
 	// the read-only role can see the objects — the point is that they are found
 	// by *qualified* name, not via search_path.
-	const relocated = "pgbot_ext_test"
+	const relocated = "queryshift_ext_test"
 	if _, err := admin.SimpleQuery(ctx, `CREATE SCHEMA IF NOT EXISTS `+relocated+`; GRANT USAGE ON SCHEMA `+relocated+` TO PUBLIC; ALTER EXTENSION pg_stat_statements SET SCHEMA `+relocated); err != nil {
 		t.Fatalf("relocate extension: %v", err)
 	}

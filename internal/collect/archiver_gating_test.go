@@ -3,7 +3,7 @@ package collect
 import (
 	"testing"
 
-	"github.com/pgrundev/pgbot/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/conn"
 )
 
 func TestArchiverAvailable_offOnStandby(t *testing.T) {

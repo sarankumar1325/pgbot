@@ -5,10 +5,10 @@ import (
 	_ "embed"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/conn"
-	"github.com/pgrundev/pgbot/internal/model"
-	"github.com/pgrundev/pgbot/internal/rate"
 	"github.com/pgrundev/pggo"
+	"github.com/sarankumar1325/queryshift/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/rate"
 )
 
 //go:embed sql/health.sql
@@ -46,7 +46,7 @@ func (healthCollector) Sample(ctx context.Context, t *conn.Target, _ conn.Capabi
 	// pool (one round trip) rather than wrapping it in BEGIN/COMMIT (three). The
 	// window is bracketed by two of these serially (runner.go), so the round trips
 	// are on the critical path; the saved transactions are also two fewer of
-	// pgbot's own commits per run (PR#1).
+	// queryshift's own commits per run (PR#1).
 	rows, err := t.Pool.Query(ctx, sqlHealth)
 	if err != nil {
 		return healthSample{}, err
@@ -62,7 +62,7 @@ func (healthCollector) Assemble(c *model.Context, _ conn.Capabilities, s sampled
 		return
 	}
 	h := &model.Health{Connections: int(b.Numbackends)}
-	// pgbot's own commits inside the window (the wait sampler's polls) are not the
+	// queryshift's own commits inside the window (the wait sampler's polls) are not the
 	// database's throughput: take them off sample B's commit counter before
 	// computing rates. Clamped so a reset (b < a) is still detected as such (PR#1).
 	commitsB := b.XactCommit

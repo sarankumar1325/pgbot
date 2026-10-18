@@ -7,7 +7,7 @@ import (
 	"unicode"
 )
 
-// Every query pgbot sends to the TARGET database must be read-only. The runtime
+// Every query queryshift sends to the TARGET database must be read-only. The runtime
 // backstops — the pg_monitor role with no write grants, default_transaction_
 // read_only = on, and a BEGIN READ ONLY per transaction — are the guarantee;
 // this is a cheap, always-runs static tripwire that catches a write statement

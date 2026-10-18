@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/collect"
-	"github.com/pgrundev/pgbot/internal/conn"
-	"github.com/pgrundev/pgbot/internal/findings"
-	"github.com/pgrundev/pgbot/internal/render"
+	"github.com/sarankumar1325/queryshift/internal/collect"
+	"github.com/sarankumar1325/queryshift/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/findings"
+	"github.com/sarankumar1325/queryshift/internal/render"
 )
 
 // P0-3: a cancellation mid-collection must return ctx.Err() promptly and leave
@@ -61,12 +61,12 @@ func TestIntegration_cancelMidRun(t *testing.T) {
 	t.Errorf("goroutine leak after cancellation: before=%d after=%d", before, runtime.NumGoroutine())
 }
 
-// These run only when PGBOT_TEST_DSN points at a live PostgreSQL — CI sets it
+// These run only when QUERYSHIFT_TEST_DSN points at a live PostgreSQL — CI sets it
 // against the docker-compose matrix; a plain `go test ./...` skips them.
 func dsn(t *testing.T) string {
-	d := os.Getenv("PGBOT_TEST_DSN")
+	d := os.Getenv("QUERYSHIFT_TEST_DSN")
 	if d == "" {
-		t.Skip("set PGBOT_TEST_DSN to run integration tests")
+		t.Skip("set QUERYSHIFT_TEST_DSN to run integration tests")
 	}
 	return d
 }
@@ -102,19 +102,19 @@ func TestIntegration_fullPipeline(t *testing.T) {
 		t.Error("horizon section missing exactness label")
 	}
 
-	// Self-observation gates (PR#1): pgbot's own sessions and session pins must not
+	// Self-observation gates (PR#1): queryshift's own sessions and session pins must not
 	// leak into what it reports about the database.
-	if c.Activity != nil && c.Activity.IdleInTransaction != 0 && os.Getenv("PGBOT_TEST_LOAD") == "" {
-		t.Errorf("idle_in_transaction = %d on an idle test database — pgbot is counting its own pool", c.Activity.IdleInTransaction)
+	if c.Activity != nil && c.Activity.IdleInTransaction != 0 && os.Getenv("QUERYSHIFT_TEST_LOAD") == "" {
+		t.Errorf("idle_in_transaction = %d on an idle test database — queryshift is counting its own pool", c.Activity.IdleInTransaction)
 	}
 	if c.Settings != nil {
 		for _, pin := range []string{"statement_timeout", "lock_timeout", "idle_in_transaction_session_timeout", "default_transaction_read_only"} {
 			if v, ok := c.Settings.Overrides[pin]; ok {
-				t.Errorf("settings.overrides reports pgbot's own session pin %s=%s as server config", pin, v)
+				t.Errorf("settings.overrides reports queryshift's own session pin %s=%s as server config", pin, v)
 			}
 		}
 		if got := c.Settings.Params["statement_timeout"]; got == "15s" {
-			t.Errorf("settings.params.statement_timeout = %q — that is pgbot's session pin, not the server value", got)
+			t.Errorf("settings.params.statement_timeout = %q — that is queryshift's session pin, not the server value", got)
 		}
 	}
 
@@ -131,14 +131,14 @@ func TestIntegration_fullPipeline(t *testing.T) {
 	}
 }
 
-// TestIntegration_poolerRatesStayCorrect asserts pgbot's central pooler claim:
+// TestIntegration_poolerRatesStayCorrect asserts queryshift's central pooler claim:
 // behind a transaction pooler, rates are still correct (each counter is read in
-// its own transaction; pg_stat_* are cluster-wide). Point PGBOT_POOLER_DSN at a
+// its own transaction; pg_stat_* are cluster-wide). Point QUERYSHIFT_POOLER_DSN at a
 // PgBouncer/Supabase/Neon pooled endpoint with write load in flight.
 func TestIntegration_poolerRatesStayCorrect(t *testing.T) {
-	dsn := os.Getenv("PGBOT_POOLER_DSN")
-	if dsn == "" || os.Getenv("PGBOT_TEST_LOAD") == "" {
-		t.Skip("set PGBOT_POOLER_DSN + PGBOT_TEST_LOAD (with write load running) to run")
+	dsn := os.Getenv("QUERYSHIFT_POOLER_DSN")
+	if dsn == "" || os.Getenv("QUERYSHIFT_TEST_LOAD") == "" {
+		t.Skip("set QUERYSHIFT_POOLER_DSN + QUERYSHIFT_TEST_LOAD (with write load running) to run")
 	}
 	ctx := context.Background()
 	target, err := conn.Connect(ctx, dsn)
@@ -160,8 +160,8 @@ func TestIntegration_poolerRatesStayCorrect(t *testing.T) {
 // load in flight, the double-sampled rate must be non-zero. Requires the caller
 // to generate concurrent commits (CI does).
 func TestIntegration_ratesArePresent(t *testing.T) {
-	if os.Getenv("PGBOT_TEST_LOAD") == "" {
-		t.Skip("set PGBOT_TEST_LOAD when concurrent write load is running")
+	if os.Getenv("QUERYSHIFT_TEST_LOAD") == "" {
+		t.Skip("set QUERYSHIFT_TEST_LOAD when concurrent write load is running")
 	}
 	ctx := context.Background()
 	target, err := conn.Connect(ctx, dsn(t))

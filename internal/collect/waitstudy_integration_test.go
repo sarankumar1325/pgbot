@@ -7,19 +7,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/conn"
 	"github.com/pgrundev/pggo"
+	"github.com/sarankumar1325/queryshift/internal/conn"
 )
 
 // A real two-session lock conflict must produce a SUSTAINED blocker with the
 // holder's transaction age, and scrubbed query text throughout. Advisory locks
 // create genuine heavyweight-lock contention (visible to pg_blocking_pids)
 // without any schema privileges — CI's DSN is a monitoring role that cannot
-// CREATE TABLE, exactly pgbot's own recommended posture.
+// CREATE TABLE, exactly queryshift's own recommended posture.
 func TestIntegration_waitStudy_namesTheBlocker(t *testing.T) {
-	dsn := os.Getenv("PGBOT_TEST_DSN")
+	dsn := os.Getenv("QUERYSHIFT_TEST_DSN")
 	if dsn == "" {
-		t.Skip("set PGBOT_TEST_DSN to run integration tests")
+		t.Skip("set QUERYSHIFT_TEST_DSN to run integration tests")
 	}
 	ctx := context.Background()
 

@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/collect"
-	"github.com/pgrundev/pgbot/internal/conn"
-	"github.com/pgrundev/pgbot/internal/model"
 	"github.com/pgrundev/pggo"
+	"github.com/sarankumar1325/queryshift/internal/collect"
+	"github.com/sarankumar1325/queryshift/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // The read-only guarantee's real boundary is the role: a pg_monitor role with no
@@ -23,9 +23,9 @@ import (
 // role itself is denied a write (SQLSTATE 42501). Needs a superuser DSN to create
 // the role.
 func TestIntegration_readOnlyRole_runsFullPipelineAndCannotWrite(t *testing.T) {
-	su := os.Getenv("PGBOT_TEST_SUPERUSER_DSN")
+	su := os.Getenv("QUERYSHIFT_TEST_SUPERUSER_DSN")
 	if su == "" {
-		t.Skip("set PGBOT_TEST_SUPERUSER_DSN (a superuser DSN) to run the read-only-role guarantee test")
+		t.Skip("set QUERYSHIFT_TEST_SUPERUSER_DSN (a superuser DSN) to run the read-only-role guarantee test")
 	}
 	ctx := context.Background()
 
@@ -33,7 +33,7 @@ func TestIntegration_readOnlyRole_runsFullPipelineAndCannotWrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse superuser dsn: %v", err)
 	}
-	const roUser, roPass = "pgbot_ro_test", "ro_test_pw"
+	const roUser, roPass = "queryshift_ro_test", "ro_test_pw"
 
 	admin, err := pggo.Connect(ctx, su)
 	if err != nil {
@@ -73,7 +73,7 @@ func TestIntegration_readOnlyRole_runsFullPipelineAndCannotWrite(t *testing.T) {
 	// 1. The whole pipeline must run green as the pg_monitor-only role.
 	target, err := conn.Connect(ctx, roDSN)
 	if err != nil {
-		t.Fatalf("pgbot connect as %s: %v", roUser, err)
+		t.Fatalf("queryshift connect as %s: %v", roUser, err)
 	}
 	defer target.Close()
 	c, err := collect.Run(ctx, target, collect.Options{Interval: 500 * time.Millisecond, ASHHz: 0})
@@ -87,7 +87,7 @@ func TestIntegration_readOnlyRole_runsFullPipelineAndCannotWrite(t *testing.T) {
 		t.Error("the pipeline should still produce a health section as a read-only role")
 	}
 
-	// 2. The role itself must be unable to write — a raw connection with NO pgbot
+	// 2. The role itself must be unable to write — a raw connection with NO queryshift
 	// read-only pinning still cannot INSERT, because the grant simply isn't there.
 	raw, err := pggo.Connect(ctx, roDSN)
 	if err != nil {

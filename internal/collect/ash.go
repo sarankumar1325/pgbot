@@ -6,9 +6,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/conn"
-	"github.com/pgrundev/pgbot/internal/model"
 	"github.com/pgrundev/pggo"
+	"github.com/sarankumar1325/queryshift/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // WaitSample is one observation of one active backend at one instant. Nil
@@ -78,7 +78,7 @@ type ashResult struct {
 const ashPollBudget = time.Second
 
 // sampleWaits polls active backends at hz for the window. Each poll is one round
-// trip (a bare SELECT — every pgbot session is default_transaction_read_only=on
+// trip (a bare SELECT — every queryshift session is default_transaction_read_only=on
 // and pg_stat_activity is live, so an explicit transaction only adds two more
 // round trips and an idle-in-transaction gap). A poll that errors or times out is
 // dropped and sampling continues — the sampler must never fail the run or queue

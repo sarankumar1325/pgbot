@@ -10,11 +10,11 @@ import (
 )
 
 // TestNoExplainAnalyze is the load-bearing safety invariant, enforced in `go
-// test` as well as CI (T12 #12): pgbot must NEVER run an inspected query. EXPLAIN
+// test` as well as CI (T12 #12): queryshift must NEVER run an inspected query. EXPLAIN
 // (without ANALYZE) only plans; EXPLAIN ANALYZE (or the ANALYZE option in any
 // order) EXECUTES it. It must not appear anywhere in the SQL pack or the Go
 // sources — not even in a string literal — because there is no safe reason for
-// pgbot to hold that text.
+// queryshift to hold that text.
 func TestNoExplainAnalyze(t *testing.T) {
 	root := repoRoot(t)
 	// Matches EXPLAIN ANALYZE and EXPLAIN (ANALYZE), any whitespace/case.
@@ -43,7 +43,7 @@ func TestNoExplainAnalyze(t *testing.T) {
 			return readErr
 		}
 		if pat.Match(b) {
-			t.Errorf("EXPLAIN ANALYZE found in %s — pgbot must never execute an inspected query", path)
+			t.Errorf("EXPLAIN ANALYZE found in %s — queryshift must never execute an inspected query", path)
 		}
 		return nil
 	})

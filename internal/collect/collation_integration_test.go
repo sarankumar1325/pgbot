@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/collect"
-	"github.com/pgrundev/pgbot/internal/conn"
-	"github.com/pgrundev/pgbot/internal/findings"
-	"github.com/pgrundev/pgbot/internal/model"
 	"github.com/pgrundev/pggo"
+	"github.com/sarankumar1325/queryshift/internal/collect"
+	"github.com/sarankumar1325/queryshift/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/findings"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // A collation version mismatch can't be produced by upgrading glibc inside a
@@ -20,9 +20,9 @@ import (
 // collected row and the finding, then confirm ALTER DATABASE … REFRESH COLLATION
 // VERSION — the step the remediation ends with — clears it.
 func TestIntegration_collationVersionMismatch(t *testing.T) {
-	su := os.Getenv("PGBOT_TEST_SUPERUSER_DSN")
+	su := os.Getenv("QUERYSHIFT_TEST_SUPERUSER_DSN")
 	if su == "" {
-		t.Skip("set PGBOT_TEST_SUPERUSER_DSN (a superuser DSN) to run the collation fixture")
+		t.Skip("set QUERYSHIFT_TEST_SUPERUSER_DSN (a superuser DSN) to run the collation fixture")
 	}
 	ro := dsn(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -50,7 +50,7 @@ func TestIntegration_collationVersionMismatch(t *testing.T) {
 		t.Skip("this database's collation records no version (C/POSIX) — nothing can drift")
 	}
 	refresh := `ALTER DATABASE ` + pggo.QuoteIdentifier(db) + ` REFRESH COLLATION VERSION`
-	if _, err := admin.Exec(ctx, `UPDATE pg_database SET datcollversion = '0.0-pgbot-test' WHERE datname = current_database()`); err != nil {
+	if _, err := admin.Exec(ctx, `UPDATE pg_database SET datcollversion = '0.0-queryshift-test' WHERE datname = current_database()`); err != nil {
 		t.Fatalf("forge a stale datcollversion: %v", err)
 	}
 	t.Cleanup(func() { _, _ = admin.Exec(context.Background(), refresh) })
@@ -81,7 +81,7 @@ func TestIntegration_collationVersionMismatch(t *testing.T) {
 	if row == nil {
 		t.Fatalf("the forged database mismatch must be collected, got %+v", c.Collation.Mismatches)
 	}
-	if row.Name != db || row.Recorded != "0.0-pgbot-test" || row.Actual == "" || row.Actual == row.Recorded {
+	if row.Name != db || row.Recorded != "0.0-queryshift-test" || row.Actual == "" || row.Actual == row.Recorded {
 		t.Fatalf("collected row must mirror the catalog: %+v", *row)
 	}
 	var f *model.Finding

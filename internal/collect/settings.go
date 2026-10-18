@@ -5,9 +5,9 @@ import (
 	_ "embed"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/conn"
-	"github.com/pgrundev/pgbot/internal/model"
 	"github.com/pgrundev/pggo"
+	"github.com/sarankumar1325/queryshift/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 //go:embed sql/settings.sql
@@ -27,11 +27,11 @@ func (settingsCollector) Kind() Kind                       { return KindGauge }
 func (settingsCollector) Available(conn.Capabilities) bool { return true }
 
 func (settingsCollector) Sample(ctx context.Context, t *conn.Target, _ conn.Capabilities) (any, error) {
-	// Report the SERVER's configuration, not this session's. pgbot pins
+	// Report the SERVER's configuration, not this session's. queryshift pins
 	// statement_timeout, lock_timeout, idle_in_transaction_session_timeout and
 	// default_transaction_read_only on every connection; read through those pins
 	// they show up as "non-default parameters" (statement_timeout=15s on a server
-	// that has none) and any rule keyed on them evaluates pgbot instead of the
+	// that has none) and any rule keyed on them evaluates queryshift instead of the
 	// database. UnpinLocal reverts them for this one transaction; the query also
 	// drops session/client-sourced rows from the override set.
 	var rows []settingRow

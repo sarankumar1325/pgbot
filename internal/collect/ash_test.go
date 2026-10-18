@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/conn"
 )
 
 func ws(typ, event string, qid int64) WaitSample {

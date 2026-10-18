@@ -10,14 +10,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pgrundev/pgbot/internal/conn"
 	"github.com/pgrundev/pggo"
+	"github.com/sarankumar1325/queryshift/internal/conn"
 )
 
 // TestDocVerifyQueries_run executes every "How to verify it yourself" SQL query
 // from the findings catalogue against a real PostgreSQL fixture, read-only, and
 // fails on any error. A wrong verify query is worse than none — the user runs it,
-// gets a different answer, and concludes pgbot is wrong — and the structural test
+// gets a different answer, and concludes queryshift is wrong — and the structural test
 // only checks that a ```sql block EXISTS, not that it runs. This catches typos,
 // wrong catalog column names, and version-gated syntax automatically. It does NOT
 // catch semantically-wrong-but-valid SQL (an unscoped filter that returns the
@@ -29,11 +29,11 @@ import (
 // columns moved (pg_stat_bgwriter) is tolerated explicitly.
 func TestIntegration_docVerifyQueries(t *testing.T) {
 	// Needs a SUPERUSER dsn — the fixture creates tables and an extension, which
-	// the read-only pgbot_ro role of PGBOT_TEST_DSN can't. (The verify queries then
+	// the read-only queryshift_ro role of QUERYSHIFT_TEST_DSN can't. (The verify queries then
 	// run read-only via conn.Connect, which pins the session regardless of role.)
-	d := os.Getenv("PGBOT_TEST_SUPERUSER_DSN")
+	d := os.Getenv("QUERYSHIFT_TEST_SUPERUSER_DSN")
 	if d == "" {
-		t.Skip("set PGBOT_TEST_SUPERUSER_DSN (a superuser DSN) to run the doc-verify guard")
+		t.Skip("set QUERYSHIFT_TEST_SUPERUSER_DSN (a superuser DSN) to run the doc-verify guard")
 	}
 	ctx := context.Background()
 
@@ -63,7 +63,7 @@ func TestIntegration_docVerifyQueries(t *testing.T) {
 
 	target, err := conn.Connect(ctx, d) // pinned read-only, exactly as a user would run these
 	if err != nil {
-		t.Fatalf("pgbot connect: %v", err)
+		t.Fatalf("queryshift connect: %v", err)
 	}
 	defer target.Close()
 

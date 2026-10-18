@@ -6,9 +6,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/conn"
-	"github.com/pgrundev/pgbot/internal/model"
 	"github.com/pgrundev/pggo"
+	"github.com/sarankumar1325/queryshift/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // LockEdge is one blocked→holder observation from one slow-plane snapshot:
