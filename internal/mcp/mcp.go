@@ -1,5 +1,5 @@
 // Package mcp is a tiny Model Context Protocol server over stdio — a third
-// renderer over pgbot's Context, for AI agents. It speaks newline-delimited
+// renderer over queryshift's Context, for AI agents. It speaks newline-delimited
 // JSON-RPC 2.0 (the MCP stdio transport) with only the standard library, so it
 // costs no dependencies and keeps the static binary. The server exposes
 // DETERMINISTIC tools only; the connected model does the explaining.

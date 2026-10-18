@@ -10,7 +10,7 @@ import (
 
 func testServer() *Server {
 	return &Server{
-		Name: "pgbot", Version: "test",
+		Name: "queryshift", Version: "test",
 		Tools: []Tool{{
 			Name: "echo", Description: "echoes back", InputSchema: map[string]any{"type": "object"},
 			Handler: func(_ context.Context, args json.RawMessage) (string, error) {
@@ -63,8 +63,8 @@ func TestServe_handshakeListAndCall(t *testing.T) {
 	if res["protocolVersion"] != "2025-06-18" {
 		t.Errorf("initialize should echo client protocol, got %v", res["protocolVersion"])
 	}
-	if res["serverInfo"].(map[string]any)["name"] != "pgbot" {
-		t.Error("serverInfo.name should be pgbot")
+	if res["serverInfo"].(map[string]any)["name"] != "queryshift" {
+		t.Error("serverInfo.name should be queryshift")
 	}
 
 	// tools/list: the echo tool with its schema.
@@ -145,7 +145,7 @@ func TestServe_initializeMalformedParamsPreservesFallback(t *testing.T) {
 
 func TestServe_promptsAndResources(t *testing.T) {
 	srv := &Server{
-		Name: "pgbot", Version: "test",
+		Name: "queryshift", Version: "test",
 		Prompts: []Prompt{{
 			Name: "diagnose", Description: "diagnose it",
 			Arguments: []PromptArg{{Name: "connection_string"}},
@@ -154,7 +154,7 @@ func TestServe_promptsAndResources(t *testing.T) {
 			},
 		}},
 		Resources: []Resource{{
-			URI: "pgbot://baselines", Name: "baselines", MimeType: "application/json",
+			URI: "queryshift://baselines", Name: "baselines", MimeType: "application/json",
 			Read: func(context.Context) (string, error) { return `[{"database":"app"}]`, nil },
 		}},
 	}
@@ -163,7 +163,7 @@ func TestServe_promptsAndResources(t *testing.T) {
 		`{"jsonrpc":"2.0","id":2,"method":"prompts/list"}`,
 		`{"jsonrpc":"2.0","id":3,"method":"prompts/get","params":{"name":"diagnose","arguments":{"connection_string":"pg://x"}}}`,
 		`{"jsonrpc":"2.0","id":4,"method":"resources/list"}`,
-		`{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":"pgbot://baselines"}}`,
+		`{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":"queryshift://baselines"}}`,
 	}, "\n") + "\n"
 	var out bytes.Buffer
 	if err := srv.Serve(context.Background(), strings.NewReader(in), &out); err != nil {
@@ -193,7 +193,7 @@ func TestServe_promptsAndResources(t *testing.T) {
 }
 
 func TestServe_toolErrorIsResultNotTransportError(t *testing.T) {
-	srv := &Server{Name: "pgbot", Version: "test", Tools: []Tool{{
+	srv := &Server{Name: "queryshift", Version: "test", Tools: []Tool{{
 		Name: "boom", Handler: func(context.Context, json.RawMessage) (string, error) {
 			return "", context.DeadlineExceeded
 		},
