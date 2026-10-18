@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// ListItem is a row for `pgbot baselines list`.
+// ListItem is a row for `queryshift baselines list`.
 type ListItem struct {
 	Fingerprint string
 	Database    string

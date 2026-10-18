@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // Saved wait profiles must read back as class shares over a window — the

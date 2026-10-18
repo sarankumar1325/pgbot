@@ -3,7 +3,7 @@ package store
 import "time"
 
 // SuppressionUnusedAfter is the number of consecutive runs a rule can match
-// nothing before pgbot flags it as probably dead (B2-3).
+// nothing before queryshift flags it as probably dead (B2-3).
 const SuppressionUnusedAfter = 5
 
 // RecordSuppressionUsage updates per-rule match bookkeeping for one run and

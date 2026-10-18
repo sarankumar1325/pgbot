@@ -3,12 +3,12 @@ package store
 import (
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // Retention policy: keep every snapshot for 7 days, then thin to one per hour
 // out to 90 days, then drop. A hard 100 MB cap evicts oldest-first as a
-// backstop. Users can see and delete what's stored with `pgbot baselines`.
+// backstop. Users can see and delete what's stored with `queryshift baselines`.
 const (
 	keepAllFor    = 7 * 24 * time.Hour
 	keepRollupFor = 90 * 24 * time.Hour

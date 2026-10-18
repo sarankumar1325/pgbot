@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // wait rollup retention: minute granularity for the recent window, then folded
@@ -95,7 +95,7 @@ func pruneWaits(tx *sql.Tx, fingerprint string, now time.Time) error {
 // ReadWaitShares returns each wait class's share of all samples recorded for
 // the fingerprint between from and to, plus the total sample count — the
 // baseline the why-engine compares a live study against. Windows from the
-// store are minute/hour rollups of whenever pgbot actually ran; callers
+// store are minute/hour rollups of whenever queryshift actually ran; callers
 // compare by ratio and must never blend them into live percentages.
 func ReadWaitShares(s *Store, fingerprint string, from, to time.Time) (map[string]float64, int, error) {
 	rows, err := s.db.Query(`

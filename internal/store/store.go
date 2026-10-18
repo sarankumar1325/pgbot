@@ -1,4 +1,4 @@
-// Package store is the local baseline persistence — the thing that makes pgbot
+// Package store is the local baseline persistence — the thing that makes queryshift
 // temporal rather than just a stats reader. Every inspect run writes a snapshot;
 // the diff package reads them back to say what changed. Pure-Go SQLite
 // (modernc.org/sqlite) keeps the binary CGO-free.
@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 	_ "modernc.org/sqlite"
 )
 
@@ -58,7 +58,7 @@ func Open(path string) (*Store, error) {
 func (s *Store) Close() error { return s.db.Close() }
 func (s *Store) Path() string { return s.path }
 
-// defaultPath is $XDG_STATE_HOME/pgbot/baselines.db, else ~/.local/state/pgbot/.
+// defaultPath is $XDG_STATE_HOME/queryshift/baselines.db, else ~/.local/state/queryshift/.
 func defaultPath() (string, error) {
 	base := os.Getenv("XDG_STATE_HOME")
 	if base == "" {
@@ -68,7 +68,7 @@ func defaultPath() (string, error) {
 		}
 		base = filepath.Join(home, ".local", "state")
 	}
-	return filepath.Join(base, "pgbot", "baselines.db"), nil
+	return filepath.Join(base, "queryshift", "baselines.db"), nil
 }
 
 // Fingerprint is a stable key for a target database. Preferring the system

@@ -88,7 +88,7 @@ func (s *Store) UpgradeNotice() string {
 	}
 	return "baseline fingerprints are now per-database within a cluster (a bug fix). " +
 		"Snapshots taken before this upgrade used a cluster-wide key and won't match new runs; " +
-		"clear the old ones with `pgbot baselines prune <fingerprint>` if you don't need them."
+		"clear the old ones with `queryshift baselines prune <fingerprint>` if you don't need them."
 }
 
 // allowedScalar guards the one place a column name is interpolated into SQL

@@ -3,7 +3,7 @@ package store
 import (
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // SaveSchema records the current schema fingerprint under a snapshot id, then
