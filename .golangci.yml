@@ -12,7 +12,7 @@ linters:
         - (*database/sql.Rows).Close
         - (*database/sql.Stmt).Close
         - (*github.com/pgrundev/pggo.Conn).Close
-        - (*github.com/pgrundev/pgbot/internal/store.Store).Close
+        - (*github.com/sarankumar1325/queryshift/internal/store.Store).Close
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln

@@ -1,15 +1,15 @@
 version: 2
 
-project_name: pgbot
+project_name: queryshift
 
 before:
   hooks:
     - go mod tidy
 
 builds:
-  - id: pgbot
-    main: ./cmd/pgbot
-    binary: pgbot
+  - id: queryshift
+    main: ./cmd/queryshift
+    binary: queryshift
     env:
       - CGO_ENABLED=0
     goos: [linux, darwin, windows]
@@ -20,13 +20,13 @@ builds:
       - -s -w -X main.version={{.Version}}
 
 archives:
-  - id: pgbot
+  - id: queryshift
     formats: [tar.gz]
     # Windows users expect a zip, not a tar.gz.
     format_overrides:
       - goos: windows
         formats: [zip]
-    name_template: "pgbot_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "queryshift_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README.md
       - LICENSE
@@ -34,7 +34,7 @@ archives:
 # Per-artifact CycloneDX SBOMs, published alongside the binaries — a supply-chain
 # expectation for a tool that connects to production databases.
 sboms:
-  - id: pgbot
+  - id: queryshift
     artifacts: archive
 
 # SHA256 checksums — the install script verifies against this before chmod +x.
@@ -65,47 +65,47 @@ signs:
     output: true
 
 nfpms:
-  - id: pgbot
-    package_name: pgbot
-    vendor: pgrun.dev
-    homepage: https://pgbot.dev
-    maintainer: pgrun <hello@pgrun.dev>
-    description: In-database observability for PostgreSQL.
+  - id: queryshift
+    package_name: queryshift
+    vendor: QueryShift
+    homepage: https://github.com/sarankumar1325/queryshift
+    maintainer: sarankumar1325
+    description: Autonomous multi-agent SQL modernization and PostgreSQL diagnostics.
     license: Apache-2.0
     formats: [deb, rpm]
     bindir: /usr/bin
 
 dockers:
   - image_templates:
-      - "ghcr.io/pgrundev/pgbot:{{ .Version }}-amd64"
+      - "ghcr.io/sarankumar1325/queryshift:{{ .Version }}-amd64"
     dockerfile: Dockerfile
     use: buildx
     build_flag_templates:
       - "--platform=linux/amd64"
     goarch: amd64
   - image_templates:
-      - "ghcr.io/pgrundev/pgbot:{{ .Version }}-arm64"
+      - "ghcr.io/sarankumar1325/queryshift:{{ .Version }}-arm64"
     dockerfile: Dockerfile
     use: buildx
     build_flag_templates:
       - "--platform=linux/arm64"
     goarch: arm64
 
-# Publish multi-arch manifests so `docker run ghcr.io/pgrundev/pgbot` (i.e.
+# Publish multi-arch manifests so `docker run ghcr.io/sarankumar1325/queryshift` (i.e.
 # :latest) works on Apple Silicon / Graviton, not just amd64. The README lists
 # Docker as a first-class install method and uses the bare (:latest) tag.
 docker_manifests:
-  - name_template: "ghcr.io/pgrundev/pgbot:{{ .Version }}"
+  - name_template: "ghcr.io/sarankumar1325/queryshift:{{ .Version }}"
     image_templates:
-      - "ghcr.io/pgrundev/pgbot:{{ .Version }}-amd64"
-      - "ghcr.io/pgrundev/pgbot:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/pgrundev/pgbot:latest"
+      - "ghcr.io/sarankumar1325/queryshift:{{ .Version }}-amd64"
+      - "ghcr.io/sarankumar1325/queryshift:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/sarankumar1325/queryshift:latest"
     image_templates:
-      - "ghcr.io/pgrundev/pgbot:{{ .Version }}-amd64"
-      - "ghcr.io/pgrundev/pgbot:{{ .Version }}-arm64"
+      - "ghcr.io/sarankumar1325/queryshift:{{ .Version }}-amd64"
+      - "ghcr.io/sarankumar1325/queryshift:{{ .Version }}-arm64"
 
-# Homebrew formula, pushed to the pgrundev/homebrew-tap repo so
-# `brew install pgrundev/tap/pgbot` works (issue #8). The workflow's GITHUB_TOKEN
+# Homebrew formula, pushed to the sarankumar1325/homebrew-tap repo so
+# `brew install sarankumar1325/tap/queryshift` works. The workflow's GITHUB_TOKEN
 # can't write to another repo, so the push needs one of two credentials, both
 # passed by release.yml (empty when the secret is absent — both env vars MUST be
 # defined or the templates error):
@@ -120,34 +120,34 @@ docker_manifests:
 # fails for a missing tap credential — and the release's brew-smoke job then
 # fails loudly instead of the install silently 404ing for users.
 brews:
-  - name: pgbot
+  - name: queryshift
     repository:
-      owner: pgrundev
+      owner: sarankumar1325
       name: homebrew-tap
       branch: main
       git:
-        url: "{{ if .Env.HOMEBREW_TAP_DEPLOY_KEY }}git@github.com:pgrundev/homebrew-tap.git{{ end }}"
+        url: "{{ if .Env.HOMEBREW_TAP_DEPLOY_KEY }}git@github.com:sarankumar1325/homebrew-tap.git{{ end }}"
         private_key: "{{ .Env.HOMEBREW_TAP_DEPLOY_KEY }}"
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     skip_upload: '{{ if or .Env.HOMEBREW_TAP_DEPLOY_KEY .Env.HOMEBREW_TAP_TOKEN }}false{{ else }}true{{ end }}'
     commit_author:
-      name: pgbot-release
-      email: hello@pgrun.dev
-    commit_msg_template: "pgbot {{ .Tag }}"
+      name: queryshift-release
+      email: queryshift@users.noreply.github.com
+    commit_msg_template: "queryshift {{ .Tag }}"
     directory: Formula
-    homepage: "https://pgbot.dev"
-    # No trailing full stop and bin/"pgbot" in the test: `brew audit` style.
-    description: "In-database observability for PostgreSQL"
+    homepage: "https://github.com/sarankumar1325/queryshift"
+    # No trailing full stop and bin/"queryshift" in the test: `brew audit` style.
+    description: "Autonomous SQL modernization and PostgreSQL diagnostics"
     license: "Apache-2.0"
     install: |
-      bin.install "pgbot"
+      bin.install "queryshift"
     test: |
-      system bin/"pgbot", "--version"
+      system bin/"queryshift", "--version"
 
 release:
   github:
-    owner: pgrundev
-    name: pgbot
+    owner: sarankumar1325
+    name: queryshift
   prerelease: auto
   # Publish the JSON Schema for the --json contracts as release assets, so a
   # consumer can pin against a version (B7-2). The files are generated from the
