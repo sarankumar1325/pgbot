@@ -1,15 +1,15 @@
-# Configuration — `.pgbot.toml`
+# Configuration — `.queryshift.toml`
 
-pgbot reads an optional `.pgbot.toml` to override detection thresholds, remap a
+queryshift reads an optional `.queryshift.toml` to override detection thresholds, remap a
 finding's severity, and **suppress** specific findings. The point of suppression
 is that noise never trains people to ignore the severity column: if you can't
 silence `checksums_disabled` on a provider that will never let you change it, you
 learn to skip the severity column — and then you miss `checksum_failures`.
 
 The file is meant to be **committed to your repository** and reviewed in PRs.
-Because of that, pgbot **refuses to read any credential-shaped key** from it
+Because of that, queryshift **refuses to read any credential-shaped key** from it
 (`dsn`, `conn`, `connection_string`, `url`, `password`, `user`) — with a hard
-error. Connection strings come from `--dsn` / `PGBOT_DSN` / `DATABASE_URL`, never
+error. Connection strings come from `--dsn` / `QUERYSHIFT_DSN` / `DATABASE_URL`, never
 this file.
 
 ## Discovery
@@ -18,10 +18,10 @@ The config is resolved by precedence — first hit wins:
 
 1. `--config <path>` — a given path that can't be read is a hard error (never a
    silent fall-through).
-2. `PGBOT_CONFIG` environment variable.
-3. `.pgbot.toml`, searched from the current directory **upward** to the
+2. `QUERYSHIFT_CONFIG` environment variable.
+3. `.queryshift.toml`, searched from the current directory **upward** to the
    filesystem root — so it can live at a repo root and apply from any subdir.
-4. `$XDG_CONFIG_HOME/pgbot/config.toml`, then `~/.config/pgbot/config.toml`.
+4. `$XDG_CONFIG_HOME/queryshift/config.toml`, then `~/.config/queryshift/config.toml`.
 5. No config — every default applies.
 
 ## Schema
@@ -46,10 +46,10 @@ expires = "2026-12-31"                    # optional, YYYY-MM-DD
 ```
 
 Unknown finding ids, unknown threshold keys, malformed globs, and bad expiry
-dates are **warnings, not errors** — a config written for a newer pgbot still
+dates are **warnings, not errors** — a config written for a newer queryshift still
 loads on an older binary. But a typo'd rule that silently doesn't apply is the
 exact failure this feature prevents, so warnings appear in `--json`
-(`config_warnings[]`), at the top of the report, and make `pgbot config check`
+(`config_warnings[]`), at the top of the report, and make `queryshift config check`
 exit non-zero.
 
 ### Overridable thresholds
@@ -114,7 +114,7 @@ the wrong thing, so findings scoped to those — `idle_in_transaction`,
 > **queryid caveat.** `q:<queryid>` is stable across restarts and
 > `pg_stat_statements` resets, but **changes across a major-version upgrade**
 > (the parse-tree hash changes). After a major upgrade, a `q:`-scoped rule stops
-> matching — pgbot's dead-rule detector (below) will flag it.
+> matching — queryshift's dead-rule detector (below) will flag it.
 
 Summary findings that aggregate many objects into one line
 (`unused_indexes`, `redundant_indexes`, `table_bloat`, `stale_statistics`, …)
@@ -133,15 +133,15 @@ mechanisms push back, both as `info` findings (they never block anything):
   several runs (tracked per database in the baseline store). The index was
   dropped, the setting was fixed, or a queryid changed after a major upgrade.
 
-`pgbot config check` additionally warns on any rule with **no `expires`**.
+`queryshift config check` additionally warns on any rule with **no `expires`**.
 
 ## Commands
 
 ```
-pgbot config check                       # validate + print resolved config; non-zero on any warning
-pgbot config explain <finding> [object]  # which rule fires for this finding, and why
-pgbot config init [dsn] [-o .pgbot.toml] # scaffold a commented config from a live run
-pgbot inspect --ignore finding[:object]  # one-off suppression for a single run (repeatable)
+queryshift config check                       # validate + print resolved config; non-zero on any warning
+queryshift config explain <finding> [object]  # which rule fires for this finding, and why
+queryshift config init [dsn] [-o .queryshift.toml] # scaffold a commented config from a live run
+queryshift inspect --ignore finding[:object]  # one-off suppression for a single run (repeatable)
 ```
 
 `config init` seeds every finding from the current run as a **commented-out**

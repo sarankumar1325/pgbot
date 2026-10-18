@@ -4,8 +4,8 @@
 *.db-wal
 *.db-shm
 pgrun_metrcis2.mp4
-/pgbot
-/pgbot.exe
+/queryshift
+/queryshift.exe
 
 # npm packaging build output (assembled by npm/build.mjs)
 npm/staging/
@@ -21,3 +21,8 @@ result
 # --- graphify: local knowledge-graph tooling (generated / machine-specific) ---
 graphify-out/
 .opencode/
+
+# Optional Strands agent development environment.
+agent/.venv/
+agent/.pytest_cache/
+agent/**/__pycache__/

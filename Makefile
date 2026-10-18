@@ -1,10 +1,10 @@
-BINARY := pgbot
+BINARY := queryshift
 VERSION ?= dev
 
 .PHONY: build test vet lint fmt clean tidy install
 
 build:
-	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/$(BINARY) ./cmd/pgbot
+	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/$(BINARY) ./cmd/queryshift
 
 test:
 	go test ./...
@@ -19,7 +19,7 @@ tidy:
 	go mod tidy
 
 install: build
-	install -m 0755 bin/$(BINARY) $(or $(PGBOT_INSTALL_DIR),/usr/local/bin)/$(BINARY)
+	install -m 0755 bin/$(BINARY) $(or $(QUERYSHIFT_INSTALL_DIR),/usr/local/bin)/$(BINARY)
 
 clean:
 	rm -rf bin
@@ -27,4 +27,4 @@ clean:
 # Full collector matrix against PG 13-18 (needs docker).
 matrix:
 	docker compose -f docker-compose.test.yml up -d
-	@echo "point PGBOT_TEST_DSN at each service and run: go test ./internal/collect/ -run Integration"
+	@echo "point QUERYSHIFT_TEST_DSN at each service and run: go test ./internal/collect/ -run Integration"

@@ -1,5 +1,5 @@
 // Package docs embeds the findings catalogue into the binary so
-// `pgbot explain-finding <id>` works offline and in air-gapped environments —
+// `queryshift explain-finding <id>` works offline and in air-gapped environments —
 // which is often exactly where a database health tool runs.
 package docs
 
