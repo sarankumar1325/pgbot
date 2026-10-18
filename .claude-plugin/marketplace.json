@@ -1,25 +1,25 @@
 {
   "version": "1.0.0",
-  "name": "pgbot",
-  "description": "The pgbot plugin — read-only PostgreSQL diagnostics for your agent: MCP tools, the postgres-diagnostics skill, and /pg-* commands.",
+  "name": "queryshift",
+  "description": "The QueryShift plugin — multi-agent SQL modernization with read-only PostgreSQL evidence.",
   "owner": {
-    "name": "pgrundev",
-    "url": "https://github.com/pgrundev/pgbot"
+    "name": "sarankumar1325",
+    "url": "https://github.com/sarankumar1325/queryshift"
   },
   "plugins": [
     {
-      "name": "pgbot",
-      "displayName": "pgbot — PostgreSQL diagnostics",
+      "name": "queryshift",
+      "displayName": "QueryShift — SQL modernization",
       "version": "0.1.0",
-      "description": "Read-only, deterministic PostgreSQL diagnostics as an agent tool: health, slow queries, unused indexes, bloat, vacuum, config — findings-first, never writes.",
+      "description": "Multi-agent legacy SQL modernization with Bedrock, plus read-only PostgreSQL schema and performance evidence.",
       "author": {
-        "name": "pgrundev",
-        "url": "https://github.com/pgrundev/pgbot"
+        "name": "sarankumar1325",
+        "url": "https://github.com/sarankumar1325/queryshift"
       },
-      "homepage": "https://pgbot.dev",
-      "repository": "https://github.com/pgrundev/pgbot",
+      "homepage": "https://github.com/sarankumar1325/queryshift",
+      "repository": "https://github.com/sarankumar1325/queryshift",
       "license": "Apache-2.0",
-      "keywords": ["postgres", "postgresql", "diagnostics", "observability", "database"],
+      "keywords": ["sql", "migration", "modernization", "postgresql", "bedrock", "agents"],
       "category": "database",
       "source": "./"
     }

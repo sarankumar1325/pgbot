@@ -1,7 +1,7 @@
 {
   "mcpServers": {
-    "pgbot": {
-      "command": "pgbot",
+    "queryshift": {
+      "command": "queryshift",
       "args": ["mcp"]
     }
   }
