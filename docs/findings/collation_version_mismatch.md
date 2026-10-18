@@ -14,7 +14,7 @@ related: []
 
 **Severity:** warn (critical when the database's default collation is the one that changed) · **Dimension:** risk · **Object identity:** `db:<database>` (see [configuration](../configuration.md)) · **Requires:** PostgreSQL 15+
 
-## What pgbot observed
+## What queryshift observed
 
 The collation version the catalog recorded no longer matches what the server's
 collation library reports now — for the database default
@@ -78,7 +78,7 @@ Rebuild first, then tell Postgres the new version is the right one. In that orde
    (`CREATE EXTENSION amcheck; SELECT bt_index_check('index_name', true);`) — an
    index that passes is fine, one that fails must be rebuilt.
 
-2. **Record the new version** so the warning stops and pgbot clears the finding:
+2. **Record the new version** so the warning stops and queryshift clears the finding:
 
    ```sql
    ALTER DATABASE app REFRESH COLLATION VERSION;
@@ -105,7 +105,7 @@ reason  = "reindexed after the glibc upgrade on 2026-09-10; REFRESH COLLATION VE
 expires = "2026-10-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - Whether the sort order **actually changed** between the two versions for your
   locale — Postgres records versions, not orderings. A mismatch is a "may be

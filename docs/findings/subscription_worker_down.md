@@ -14,7 +14,7 @@ related: [replica_disconnected]
 
 **Severity:** warn · **Dimension:** risk · **Object identity:** `sub:<name>` (see [configuration](../configuration.md)) · **Requires:** logical replication
 
-## What pgbot observed
+## What queryshift observed
 
 A logical-replication subscription exists on this node but its **apply worker is not
 running** (`WorkerRunning = false`, derived from the subscription having no live worker
@@ -37,7 +37,7 @@ down, the further this subscriber drifts and the more WAL the publisher must kee
 ## How to verify it yourself
 
 Run on the **subscriber**. A subscription with no row in `pg_stat_subscription` that
-has a non-null `pid` has no running apply worker — that's pgbot's condition:
+has a non-null `pid` has no running apply worker — that's queryshift's condition:
 
 ```sql
 SELECT s.subname,
@@ -53,7 +53,7 @@ LEFT   JOIN pg_stat_subscription st
 ORDER  BY s.subname;
 ```
 
-A subscription whose `pid` is `NULL` (no main-worker row) is the one pgbot flagged.
+A subscription whose `pid` is `NULL` (no main-worker row) is the one queryshift flagged.
 `subenabled = false` tells you it was disabled; `subenabled = true` with no `pid` means
 the worker died or is crash-looping — check the subscriber's server log for apply
 errors.
@@ -97,15 +97,15 @@ expires = "2027-01-01"
 for *every* subscription, so a different subscription's worker crashing later would go
 unnoticed while your data silently drifts.
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It sees that the worker **isn't running**, not **why** — disabled, crashed, or
   blocked on an apply conflict all present the same way. The log is where the reason
   lives.
 - It cannot measure how far this subscriber has **drifted** from the publisher, only
   that application has stopped; the lag/backlog lives on the publisher's slot.
-- The publisher side is a separate node pgbot may not be scanning; the retained-WAL
-  consequence there is invisible from the subscriber unless pgbot also runs on the
+- The publisher side is a separate node queryshift may not be scanning; the retained-WAL
+  consequence there is invisible from the subscriber unless queryshift also runs on the
   publisher.
 - A worker that is running but making no *progress* (stuck mid-transaction) is not this
   finding — the worker exists, so `WorkerRunning` is true.

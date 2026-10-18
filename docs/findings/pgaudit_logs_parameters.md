@@ -14,7 +14,7 @@ related: [pgaudit_silent]
 
 **Severity:** warn · **Dimension:** risk · **Object identity:** `setting:pgaudit.log_parameter` · **Requires:** pgaudit installed
 
-## What pgbot observed
+## What queryshift observed
 
 The pgaudit extension is installed and `pgaudit.log_parameter` reads `on`:
 every audited statement's **bind parameters are written verbatim** into the
@@ -28,7 +28,7 @@ Bind parameters are where the sensitive values live — passwords in
 log files, which typically have **wider access** (ops tooling, log shippers,
 aggregation services) and **longer retention** than the database itself. The
 database's own access control does not protect data that has been copied into
-its logs. Note the contrast with pgbot's own behavior: pgbot's reports carry
+its logs. Note the contrast with queryshift's own behavior: queryshift's reports carry
 normalized query text with literals stripped, precisely to avoid this.
 
 ## How to verify it yourself
@@ -65,9 +65,9 @@ reason  = "regulator requires parameter capture; log pipeline is access-controll
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
-pgbot cannot read the log itself, so it cannot tell whether sensitive values
+queryshift cannot read the log itself, so it cannot tell whether sensitive values
 have already been written, where the logs are shipped, or who can read them.
 
 ## Related

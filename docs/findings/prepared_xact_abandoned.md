@@ -14,10 +14,10 @@ related: [vacuum_horizon_blocked]
 
 **Severity:** warn (critical when a prepared (2PC) transaction open over an hour) · **Dimension:** risk · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 A **prepared (two-phase-commit) transaction** has been sitting in the
-`PREPARED` state, neither committed nor rolled back. pgbot reads the prepared-xact
+`PREPARED` state, neither committed nor rolled back. queryshift reads the prepared-xact
 holders the horizon collector gathers (from `pg_prepared_xacts`) and fires when one
 has been open at least **`preparedXactWarnSec` = 300 seconds (5 minutes)** as
 `warn`, escalating to `critical` once it has been open **`preparedXactCritSec` = 3600
@@ -52,7 +52,7 @@ ORDER BY prepared;
 ```
 
 Any row is a prepared transaction awaiting resolution; `open_for` is the age that
-drives pgbot's warn/critical thresholds, and `age(transaction)` is how many
+drives queryshift's warn/critical thresholds, and `age(transaction)` is how many
 transactions of vacuum horizon it is holding back. If you don't run a distributed
 transaction manager (XA/JTA) at all, any row here is almost certainly a leak — and
 note `max_prepared_transactions` must be non-zero for these to exist in the first
@@ -92,7 +92,7 @@ reason  = "XA coordinator holds sub-minute prepared branches during commit; unde
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It sees the **prepared-xact list**, not the **coordinator**. It cannot tell an
   in-flight two-phase commit apart from a truly abandoned one — only the age. Whether

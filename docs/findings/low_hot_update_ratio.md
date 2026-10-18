@@ -14,7 +14,7 @@ related: [table_bloat, unused_indexes]
 
 **Severity:** warn · **Dimension:** throughput · **Object identity:** `schema.relation` (see [configuration](../configuration.md)) · **Requires:** `track_counts` (on by default)
 
-## What pgbot observed
+## What queryshift observed
 
 On a table with enough write volume to judge — at least **10,000** updates
 (`hotUpdateMinVolume`) — fewer than **50%** (`hotUpdateRatioWarn`) of those updates
@@ -42,7 +42,7 @@ indexes** (it had accreted a plain index, a composite, and a partial over the ye
 Because an update that changes an **indexed** column can never be HOT, every "seen
 again" write — millions a day — rewrote three index trees instead of zero. The fix
 was not to touch fillfactor at all: it was to drop the two redundant `last_seen_at`
-indexes (pgbot's `redundant_indexes` finding named them), after which the column was
+indexes (queryshift's `redundant_indexes` finding named them), after which the column was
 no longer indexed on the write path and HOT updates became possible again.
 
 The lesson the number encodes: **a 0% HOT ratio on a high-update table usually means
@@ -51,7 +51,7 @@ an indexed column is being updated**, not that the table needs a fillfactor chan
 ## How to verify it yourself
 
 ```sql
--- The ratio pgbot computes, worst first:
+-- The ratio queryshift computes, worst first:
 SELECT schemaname || '.' || relname                                   AS table,
        n_tup_upd,
        n_tup_hot_upd,
@@ -127,14 +127,14 @@ reason  = "last_seen_at index backs the dashboard's recency sort; write cost acc
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It sees the **ratio**, not the cause. It cannot prove *which* index blocks HOT —
   only that HOT isn't happening. The index-to-column query above is how you confirm
   the culprit.
-- pgbot reports the ratio, not the split between an indexed-column change and a
+- queryshift reports the ratio, not the split between an indexed-column change and a
   page-full (fillfactor) problem. On **PostgreSQL 16+** that split *is* knowable via
-  `n_tup_newpage_upd` (see *How to verify*), but pgbot does not yet read that column;
+  `n_tup_newpage_upd` (see *How to verify*), but queryshift does not yet read that column;
   on older versions it isn't available at all.
 - Counts are cumulative since the last stats reset, so a recent reset can make a
   chronically-bad table look fine (and vice versa).

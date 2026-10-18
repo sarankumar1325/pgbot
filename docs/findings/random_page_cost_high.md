@@ -14,15 +14,15 @@ related: [seq_scan_heavy]
 
 **Severity:** warn · **Dimension:** latency · **Object identity:** `setting:random_page_cost` (see [configuration](../configuration.md)) · **Requires:** a managed/SSD provider
 
-## What pgbot observed
+## What queryshift observed
 
-`random_page_cost` is **≥ 4** *and* pgbot detected a managed, SSD-backed provider.
+`random_page_cost` is **≥ 4** *and* queryshift detected a managed, SSD-backed provider.
 The literal condition is `rpc >= 4 && cloudProvider(c)`, where `cloudProvider`
 recognizes `rds`, `aurora`, `cloudsql`, `azure`, `supabase`, and `neon`. The value
-**4** isn't a pgbot constant — it is Postgres's own historical default, calibrated
+**4** isn't a queryshift constant — it is Postgres's own historical default, calibrated
 for a **rotational disk**. Confidence is 0.7.
 
-pgbot only fires this on a detected managed provider precisely because it can't
+queryshift only fires this on a detected managed provider precisely because it can't
 otherwise be sure the underlying storage is SSD; on those platforms it always is.
 
 ## Why it matters
@@ -38,7 +38,7 @@ that quietly slows a broad swath of queries.
 ## How to verify it yourself
 
 ```sql
--- The setting pgbot read, plus the two values it trades off against:
+-- The setting queryshift read, plus the two values it trades off against:
 SELECT name, setting, source
 FROM pg_settings
 WHERE name IN ('random_page_cost', 'seq_page_cost', 'effective_cache_size');
@@ -88,12 +88,12 @@ line: a bare `finding = "random_page_cost_high"` over-suppresses, muting the fin
 permanently — so if you later migrate providers or someone raises the value again,
 the warning never returns. Scope it explicitly and let the expiry force a re-review.
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - **Provider detection gates the whole finding.** It fires only for the hardcoded
   managed list (`rds`, `aurora`, `cloudsql`, `azure`, `supabase`, `neon`). A
   **self-hosted** SSD/NVMe box gets *no* finding even though the same fix applies —
-  pgbot can't confirm your disk is SSD, so it stays conservative rather than guess.
+  queryshift can't confirm your disk is SSD, so it stays conservative rather than guess.
   Conversely, on the rare managed instance with magnetic storage, the advice would
   be wrong.
 - It reads the **setting value, not query plans**. It flags the bias; it cannot

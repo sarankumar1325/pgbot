@@ -14,9 +14,9 @@ related: [idle_in_transaction, long_running_transaction, prepared_xact_abandoned
 
 **Severity:** warn (critical when the pinned XID age grows large (dimension escalates from storage to risk)) · **Dimension:** storage · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
-Something is holding the cluster's **xmin horizon** in the past. pgbot gathers every
+Something is holding the cluster's **xmin horizon** in the past. queryshift gathers every
 candidate holder of an old `xmin`, orders them oldest-first, and looks at the oldest
 one: its `xmin` is at least **1,000,000** transactions behind the current
 transaction id (the `vacuumHorizonWarnXIDs` constant), so the finding fires at
@@ -53,9 +53,9 @@ so `age(datfrozenxid)` climbs and the cluster marches toward the wraparound wall
 
 ## How to verify it yourself
 
-pgbot's number is the oldest holder's `xmin` age in transactions. Reproduce it, and
+queryshift's number is the oldest holder's `xmin` age in transactions. Reproduce it, and
 name every holder, with these four read-only queries — one per source. The largest
-`xmin_age` among them is the one pgbot reports:
+`xmin_age` among them is the one queryshift reports:
 
 ```sql
 -- (1) Backends: long-running or idle-in-transaction sessions holding an old xmin.
@@ -139,7 +139,7 @@ Because there is no object, this mutes the whole check — including a *differen
 holder that appears tomorrow. Keep `expires` short and revisit, rather than leaving
 the cluster's horizon unwatched.
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It names the holder by pid, slot, client address, or gid — **not** by application.
   It cannot tell you which service opened the transaction or which consumer owns the

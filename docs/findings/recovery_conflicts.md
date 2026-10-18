@@ -14,10 +14,10 @@ related: [replica_lag_time]
 
 **Severity:** warn · **Dimension:** risk · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** standby
 
-## What pgbot observed
+## What queryshift observed
 
 This node is a standby and the sum of its recovery-conflict counters in
-`pg_stat_database_conflicts` is **greater than zero** (`Total() > 0`). pgbot adds the
+`pg_stat_database_conflicts` is **greater than zero** (`Total() > 0`). queryshift adds the
 five conflict classes together —
 `confl_snapshot + confl_lock + confl_bufferpin + confl_deadlock + confl_tablespace` —
 and reports the total, with the per-class breakdown in the evidence. There is no
@@ -48,7 +48,7 @@ SELECT datname,
        confl_deadlock,
        confl_tablespace,
        confl_snapshot + confl_lock + confl_bufferpin
-         + confl_deadlock + confl_tablespace AS total   -- pgbot's number
+         + confl_deadlock + confl_tablespace AS total   -- queryshift's number
 FROM   pg_stat_database_conflicts
 WHERE  confl_snapshot + confl_lock + confl_bufferpin
          + confl_deadlock + confl_tablespace > 0
@@ -93,10 +93,10 @@ reason  = "HA-only standby; no application reads run here, so cancellations are 
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - The counters are **cumulative since the last stats reset**; a large total may be
-  months of history, not a current storm. pgbot reports the count, not the rate — a
+  months of history, not a current storm. queryshift reports the count, not the rate — a
   recent `pg_stat_reset()` can make a chronic problem look clean.
 - It cannot see *which* queries were cancelled or how many succeeded; only that some
   were killed. The per-class breakdown hints at the cause but not the culprit query.

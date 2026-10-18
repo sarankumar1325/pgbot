@@ -14,10 +14,10 @@ related: []
 
 **Severity:** warn · **Dimension:** throughput · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 Over the sample window, a high share of transactions **rolled back** rather than
-committed. pgbot computes `rollbackRatio = xact_rollback / (xact_commit +
+committed. queryshift computes `rollbackRatio = xact_rollback / (xact_commit +
 xact_rollback)` from the delta in `pg_stat_database` and fires when it is at least
 **`rollbackRatioWarn` = 0.10 (10%)**. To keep the ratio meaningful it is gated on
 volume: it fires only when the window saw enough transactions —
@@ -52,7 +52,7 @@ WHERE xact_commit + xact_rollback > 0
 ORDER BY rollback_pct DESC;
 ```
 
-Note this shows the ratio **cumulative since the last stats reset**, whereas pgbot
+Note this shows the ratio **cumulative since the last stats reset**, whereas queryshift
 computes it over its sample *window* from the counter deltas — a chronically-bad
 week can mask a spike that just started (and vice versa). To watch the live rate,
 snapshot the counters, wait, and diff:
@@ -92,7 +92,7 @@ reason  = "Serializable workload retries on 40001; elevated rollback rate is by 
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It sees the **ratio**, not the **cause**. `pg_stat_database` counts commits and
   rollbacks but not *why* a transaction aborted — that detail lives only in the
@@ -108,4 +108,4 @@ expires = "2027-01-01"
 ## Related
 
 - This finding travels alone — a high rollback ratio is a symptom whose cause is
-  application- or contention-specific rather than tied to another pgbot check.
+  application- or contention-specific rather than tied to another queryshift check.

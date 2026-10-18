@@ -14,19 +14,19 @@ related: [wait_io_bound]
 
 **Severity:** info · **Dimension:** throughput · **Object identity:** `setting:track_io_timing` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
-The `track_io_timing` GUC reads exactly `off` — pgbot's literal test is
+The `track_io_timing` GUC reads exactly `off` — queryshift's literal test is
 `settingParam(c, "track_io_timing") != "off"` to *skip*, so the finding fires when the
 value is `off`. There is no threshold to tune; it is `info`, a data-quality note about
-what pgbot (and you) can measure.
+what queryshift (and you) can measure.
 
 ## Why it matters
 
 With `track_io_timing` off, the block read/write time counters
 (`blk_read_time` / `blk_write_time` in `pg_stat_database` and `pg_stat_statements`) stay
 at **zero**, and `EXPLAIN (ANALYZE, BUFFERS)` shows no I/O timing. That means neither
-pgbot nor you can tell an **I/O-bound** query from a **CPU-bound** one — the single most
+queryshift nor you can tell an **I/O-bound** query from a **CPU-bound** one — the single most
 useful split for query tuning — which weakens both query analysis and the wait
 profile. The measured overhead of turning it on is negligible on modern hardware with a
 fast clock source.
@@ -70,7 +70,7 @@ reason  = "managed provider doesn't expose track_io_timing; can't be enabled"
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It reads the setting, not the **actual** timing overhead on this host — that needs
   `pg_test_timing` and knowledge of the clock source, which live below Postgres.
@@ -78,5 +78,5 @@ expires = "2027-01-01"
 
 ## Related
 
-- [wait_io_bound](wait_io_bound.md) — with `track_io_timing` off, pgbot loses the
+- [wait_io_bound](wait_io_bound.md) — with `track_io_timing` off, queryshift loses the
   clearest evidence for this finding; turning it on sharpens the I/O-vs-CPU picture.

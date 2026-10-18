@@ -14,13 +14,13 @@ related: [table_never_vacuumed, autovacuum_starved, txid_wraparound]
 
 **Severity:** critical · **Dimension:** risk · **Object identity:** `schema.relation` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 At least one table carries `autovacuum_enabled = false` in its per-table
 reloptions (`pg_class.reloptions`; the collector surfaces it as
 `t.AutovacuumDisabled`). This is a **relation-level** switch, independent of the
 global `autovacuum` GUC — autovacuum can be on for the whole cluster and still be
-turned off for this one table. pgbot reports it with confidence **1.0**: it is not
+turned off for this one table. queryshift reports it with confidence **1.0**: it is not
 inferred from behaviour, it is read straight from the catalog. There is no size
 floor — any table with the reloption set is flagged.
 
@@ -102,7 +102,7 @@ reason  = "vacuumed by the nightly maintenance job; freezing handled there (OPS-
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It reads the **reloption**, not the **intent**. It cannot tell a deliberate
   "we vacuum this ourselves" from a migration that forgot to flip the switch back —

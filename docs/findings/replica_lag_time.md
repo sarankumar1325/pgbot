@@ -14,7 +14,7 @@ related: [sync_rep_degraded, recovery_conflicts]
 
 **Severity:** warn (critical when replay lag past the critical threshold) · **Dimension:** risk · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** replication, WAL flowing
 
-## What pgbot observed
+## What queryshift observed
 
 At least one standby's `replay_lag` in `pg_stat_replication` is **≥ 60 seconds**
 (`warn`), or **≥ 300 seconds** (`critical`). The warn threshold is the
@@ -22,10 +22,10 @@ At least one standby's `replay_lag` in `pg_stat_replication` is **≥ 60 seconds
 threshold is fixed at `replicaLagCritSec = 300`. Raising the warning threshold
 above 300 seconds does not suppress critical lag at or above 300 seconds. The
 check is **gated on WAL
-actually flowing** — pgbot only evaluates it when its own WAL sampling shows bytes
+actually flowing** — queryshift only evaluates it when its own WAL sampling shows bytes
 being written on the primary (`WAL.BytesPerSec > 0`). That gate matters:
 `replay_lag` on an idle primary is stale and reads a reassuring "zero" even when a
-standby is stuck, so a naive point-in-time read there lies. pgbot reports the
+standby is stuck, so a naive point-in-time read there lies. queryshift reports the
 **worst** standby's lag as the headline number.
 
 ## Why it matters
@@ -35,7 +35,7 @@ lose every commit it hasn't replayed yet — that lag, in seconds of wall-clock 
 exactly the data you'd drop on failover. Byte-based lag (`pg_wal_lsn_diff`) can't tell
 you this: 200 MB of behind-ness is a catastrophe on a quiet database and a rounding
 error on a busy one. Converting bytes to time needs the write rate, which is why
-pgbot samples WAL generation. A standby that lags in replay is also a standby that
+queryshift samples WAL generation. A standby that lags in replay is also a standby that
 can't serve fresh reads, so read-your-writes breaks for anything routed to it.
 
 ## How to verify it yourself
@@ -47,7 +47,7 @@ here and being replayed on the standby:
 SELECT application_name,
        client_addr,
        state,
-       EXTRACT(epoch FROM replay_lag)::int AS replay_lag_sec,   -- pgbot's number
+       EXTRACT(epoch FROM replay_lag)::int AS replay_lag_sec,   -- queryshift's number
        EXTRACT(epoch FROM write_lag)::int   AS write_lag_sec,
        EXTRACT(epoch FROM flush_lag)::int   AS flush_lag_sec
 FROM   pg_stat_replication
@@ -56,7 +56,7 @@ ORDER  BY replay_lag DESC NULLS LAST;
 
 Any standby with `replay_lag_sec ≥ 60` explains a `warn`; `≥ 300` explains a
 `critical`. If every `replay_lag` is `NULL` or `0`, confirm the primary is actually
-generating WAL right now (`SELECT pg_current_wal_lsn();` twice, a second apart) — pgbot
+generating WAL right now (`SELECT pg_current_wal_lsn();` twice, a second apart) — queryshift
 suppresses the finding on an idle primary for exactly this reason.
 
 ## How to fix it
@@ -96,14 +96,14 @@ If some standbys are failover targets and others aren't, prefer raising
 finding outright. This remains a cluster-wide warning threshold, not a per-standby
 filter: the fixed 300-second critical threshold still applies to every standby.
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - The lag is a **point-in-time** sample. A standby that lags in bursts (batch load,
   checkpoint) is only caught if the scan lands during a burst.
 - It reports **replay** lag (the RPO-relevant one); it does not separately alert on
   `write_lag`/`flush_lag`, which matter for synchronous durability — see
   [sync_rep_degraded](sync_rep_degraded.md).
-- The WAL-generation rate that gates this check is pgbot's own sample; a primary that
+- The WAL-generation rate that gates this check is queryshift's own sample; a primary that
   was idle during the scan but busy otherwise can suppress a real lag.
 - It cannot see *why* the standby is behind — only that it is. The apply-path
   investigation above is manual.

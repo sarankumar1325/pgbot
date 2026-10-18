@@ -14,10 +14,10 @@ related: [seq_scan_heavy]
 
 **Severity:** warn · **Dimension:** latency · **Object identity:** `schema.relation` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 A **partitioned** table is being read end-to-end. Rolling the scan counts up across
-all of its partitions (`c.Tables.Partitioned`), pgbot flags the parent when:
+all of its partitions (`c.Tables.Partitioned`), queryshift flags the parent when:
 
 - the aggregate live rows are at least **50,000** (`seqScanTableMinRows = 50000`);
 - the aggregate sequential scans are at least **1,000**
@@ -109,7 +109,7 @@ Do **not** omit `object` — a bare `finding = "partition_seq_scan_heavy"` mutes
 check for *every* partitioned table, including ones you add later, hiding a future
 partition set that stops pruning. Scope it to the one relation.
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It rolls up **counts**, not queries. It cannot tell **which** query fails to
   prune, nor whether pruning is even possible (the predicate may not reference the

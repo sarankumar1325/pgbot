@@ -14,14 +14,14 @@ related: [work_mem_overcommit, wait_io_bound]
 
 **Severity:** warn · **Dimension:** throughput · **Object identity:** `setting:work_mem` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
-pgbot does **not** read `work_mem` and compare it to a number — the setting alone
+queryshift does **not** read `work_mem` and compare it to a number — the setting alone
 tells you nothing. It infers that `work_mem` is too small from the *symptom*: sorts
 and hashes spilling to disk. The literal condition is a temporary-file write rate at
 or above **1 MiB/s** (`tuneTempSpillBytesPerSec = 1 << 20`), derived from the
 `pg_stat_database.temp_bytes` counter across two snapshots. When that rate is
-exceeded, pgbot reports the current `work_mem` value in the title as the likely knob.
+exceeded, queryshift reports the current `work_mem` value in the title as the likely knob.
 
 ## Why it matters
 
@@ -34,7 +34,7 @@ and often the real reason a workload looks "I/O bound."
 ## How to verify it yourself
 
 ```sql
--- The temp-file counters pgbot rates. Cumulative since the last stats reset:
+-- The temp-file counters queryshift rates. Cumulative since the last stats reset:
 SELECT datname,
        temp_files,
        temp_bytes,
@@ -46,7 +46,7 @@ ORDER BY temp_bytes DESC;
 SHOW work_mem;
 ```
 
-pgbot measures the *rate* between two snapshots; a single `temp_bytes` reading only
+queryshift measures the *rate* between two snapshots; a single `temp_bytes` reading only
 shows the lifetime total. To catch spills as they happen and see which statements
 cause them, set `log_temp_files = 0` and watch the server log.
 
@@ -82,7 +82,7 @@ reason  = "nightly ETL sorts intentionally spill; work_mem raised per-session fo
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It sees the aggregate temp-file **rate**, not which query or which operation spilled.
   A single rogue reporting query can trip the finding for the whole cluster.

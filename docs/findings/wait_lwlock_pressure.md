@@ -14,10 +14,10 @@ related: [checkpoints_forced]
 
 **Severity:** warn · **Dimension:** throughput · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** ASH sampling (ash-hz>0)
 
-## What pgbot observed
+## What queryshift observed
 
 Sampling `pg_stat_activity` many times over the collection window (active-session history,
-at `--ash-hz`, default **10 Hz**), pgbot found a single **lightweight lock** event
+at `--ash-hz`, default **10 Hz**), queryshift found a single **lightweight lock** event
 concentrating the window. The literal condition is `dominantLWLock(w).share > waitLWLockShare`
 where `waitLWLockShare = 0.30`: the largest individual `LWLock:<event>` (e.g.
 `BufferMapping`, `WALWrite`, `LockManager`, `WALInsert`) accounted for **more than 30%** of
@@ -45,7 +45,7 @@ tallying which `LWLock` event dominates active backends:
 
 ```sql
 -- READ-ONLY. Run repeatedly (e.g. \watch 0.1) over a minute and aggregate:
--- the fraction of active samples on one LWLock event is what pgbot compares to 30%.
+-- the fraction of active samples on one LWLock event is what queryshift compares to 30%.
 -- One snapshot is not a profile — sample many times.
 SELECT wait_event AS lwlock_event,
        count(*)   AS sampled
@@ -94,12 +94,12 @@ reason  = "…"
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - A wait profile is a **distribution over sampled moments**, never an exact latch-wait
   time. The finding carries its sample count; a 30%+ share off a thin sample is
   suggestive, not measured — confidence scales with the total (20 thin, 200 solid).
-- LWLocks are held for microseconds; between samples pgbot sees nothing, so a genuinely
+- LWLocks are held for microseconds; between samples queryshift sees nothing, so a genuinely
   high but very short-lived contention rate can be under- or over-represented by the luck
   of when samples landed.
 - It reports the *event*, not the shared-memory address or the specific buffer/partition

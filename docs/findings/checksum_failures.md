@@ -14,7 +14,7 @@ related: [ignore_checksum_failure_on, checksums_disabled]
 
 **Severity:** critical · **Dimension:** risk · **Object identity:** `db:<database>` (see [configuration](../configuration.md)) · **Requires:** PostgreSQL 12+, `data_checksums = on`
 
-## What pgbot observed
+## What queryshift observed
 
 `pg_stat_database.checksum_failures` is greater than zero on one or more databases:
 Postgres read at least one page whose stored checksum did not match the page's
@@ -87,7 +87,7 @@ reason  = "incident 2026-08-14: restored via PITR, counter is residual; tracked 
 expires = "2026-09-14"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It sees the **counter**, not which relation or block failed — that is only in the
   server log (see the verification step).

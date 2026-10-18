@@ -14,7 +14,7 @@ related: [wait_lwlock_pressure]
 
 **Severity:** warn · **Dimension:** throughput · **Object identity:** `setting:max_wal_size` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 Of the checkpoints since the last stats reset, too many were **forced by WAL volume**
 rather than fired on the timed interval. Two conditions must both hold: at least
@@ -86,7 +86,7 @@ reason  = "counters skewed by the one-time data migration on 2026-08-10; steady 
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - The counts are **cumulative** since the last `pg_stat_reset_shared` (or server
   start), so a past bulk load can skew the forced fraction long after it ended.

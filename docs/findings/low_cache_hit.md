@@ -14,11 +14,11 @@ related: [seq_scan_heavy, wait_io_bound]
 
 **Severity:** warn · **Dimension:** throughput · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 The buffer-cache hit ratio over the sample window fell below `cacheHitWarn = 0.90` — i.e.
 **under 90%** of block reads were served from `shared_buffers` and more than 10% went to
-disk. pgbot computes it as `1 − blks_hit/(blks_hit + blks_read)` from `pg_stat_database`
+disk. queryshift computes it as `1 − blks_hit/(blks_hit + blks_read)` from `pg_stat_database`
 over the window between its two counter samples.
 
 The check is **suppressed on a cold window**: if the effective stats window is younger than
@@ -35,7 +35,7 @@ across every query — not just the one that missed.
 
 ## How to verify it yourself
 
-Read the same counters pgbot does. For a snapshot since the last stats reset:
+Read the same counters queryshift does. For a snapshot since the last stats reset:
 
 ```sql
 -- READ-ONLY. Cache-hit ratio per database from pg_stat_database.
@@ -48,7 +48,7 @@ WHERE datname NOT IN ('template0', 'template1')
 ORDER BY cache_hit_pct ASC NULLS LAST;
 ```
 
-That ratio is cumulative since `stats_reset`. To measure the *current* rate the way pgbot's
+That ratio is cumulative since `stats_reset`. To measure the *current* rate the way queryshift's
 window does, sample `blks_hit`/`blks_read` twice a minute apart and diff them — a healthy
 OLTP cluster usually sits above 99%. You can also find which relations miss most via
 `pg_statio_user_tables` (`heap_blks_read` vs `heap_blks_hit`).
@@ -79,7 +79,7 @@ reason  = "…"
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - The ratio is **cumulative counter arithmetic**, averaged over the whole window since the
   last `pg_stat_reset()`. A recent reset makes it swing wildly; a very old window

@@ -14,7 +14,7 @@ related: [txid_wraparound]
 
 **Severity:** warn (critical when multixact age past the critical threshold) · **Dimension:** risk · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 The oldest unfrozen **multixact-id** age in the cluster —
 `max(mxid_age(datminmxid))` taken across every row of `pg_database` — has reached
@@ -50,7 +50,7 @@ freezing work, and both are easiest to fix early.
 ## How to verify it yourself
 
 ```sql
--- Reproduce pgbot's number: oldest datminmxid age across the cluster,
+-- Reproduce queryshift's number: oldest datminmxid age across the cluster,
 -- and how far that is toward the 2,147,483,647 wall.
 SELECT max(mxid_age(datminmxid))                                 AS max_mxid_age,
        round(100.0 * max(mxid_age(datminmxid)) / 2147483647, 1)  AS pct_to_wrap
@@ -129,14 +129,14 @@ expires = "2027-01-01"
 Keep `expires` to days. If multixact age is still climbing when it lapses, the freeze
 is losing — investigate, do not renew.
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It reports one cluster-wide multixact age, not the specific database or table
   nearest the wall — the per-database and per-table queries above name those.
 - It reads `mxid_age(datminmxid)` only. It does **not** measure the multixact
   **members** space (`pg_multixact/members`), which a FK-heavy or many-sharers
   workload can exhaust *before* the id counter — the same VACUUM FREEZE fixes it, but
-  pgbot won't show that pressure separately.
+  queryshift won't show that pressure separately.
 - It cannot see which application is taking the shared row locks driving multixact
   consumption. The `relminmxid` per-table query points at the rows involved, not the
   sessions locking them.

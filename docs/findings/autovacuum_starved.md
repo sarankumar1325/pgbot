@@ -14,11 +14,11 @@ related: [table_bloat, autovacuum_saturated]
 
 **Severity:** warn · **Dimension:** storage · **Object identity:** `schema.relation` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 On a table above the **10,000**-tuple floor (`deadRatioTableMinRows`), the dead-tuple
 count is **≥ 1.5×** the table's autovacuum trigger, yet **no autovacuum is recorded**
-(`last_autovacuum` is null). pgbot computes the trigger exactly as Postgres does —
+(`last_autovacuum` is null). queryshift computes the trigger exactly as Postgres does —
 `autovacuum_vacuum_threshold + autovacuum_vacuum_scale_factor × n_live_tup` (defaults
 **50** and **0.2**) — and it honours **per-table reloption overrides** of both
 `autovacuum_vacuum_threshold` and `autovacuum_vacuum_scale_factor` when they're set.
@@ -57,7 +57,7 @@ ORDER BY s.n_dead_tup DESC;
 ```
 
 If a table sets its own `autovacuum_vacuum_scale_factor` / `..._threshold` in
-reloptions, substitute those values — pgbot does. Check for overrides with:
+reloptions, substitute those values — queryshift does. Check for overrides with:
 
 ```sql
 SELECT reloptions FROM pg_class WHERE oid = 'public.orders'::regclass;
@@ -103,10 +103,10 @@ reason  = "one-off backfill left dead tuples; manual VACUUM scheduled, steady st
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It reads a **snapshot**. If an autovacuum worker is running on this table *right
-  now*, pgbot can't see it clearing the dead tuples — `last_autovacuum` only updates
+  now*, queryshift can't see it clearing the dead tuples — `last_autovacuum` only updates
   when the worker finishes.
 - `n_dead_tup` is the statistics estimate, not a page count, and it's zeroed by a
   stats reset — a reset can make a genuinely-starved table momentarily look fine.

@@ -14,10 +14,10 @@ related: [txid_wraparound]
 
 **Severity:** warn (critical when a sequence is ≥90% consumed) · **Dimension:** risk · **Object identity:** `schema.sequence` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 At least one sequence has consumed **≥80%** of its usable range (`warn`), or
-**≥90%** (`critical`). pgbot measures usage as `last_value / min(max_value, column
+**≥90%** (`critical`). queryshift measures usage as `last_value / min(max_value, column
 type max)` — the second term matters: an `int4` identity/`serial` column wraps at
 **2,147,483,647** even when the sequence's own `max_value` is the `int8` ceiling,
 because the value has to fit the column.
@@ -109,7 +109,7 @@ Do **not** omit `object` here — a bare `finding = "sequence_exhaustion"` mutes
 check for *every* sequence, including ones you add later, which is exactly how a
 future `int4` overflow gets hidden.
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It reads `last_value`, which lags under concurrency because of the sequence
   cache (`CACHE n`) — the true next value can be slightly ahead.

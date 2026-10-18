@@ -14,7 +14,7 @@ related: [vacuum_horizon_blocked, replica_disconnected]
 
 **Severity:** warn (critical when retained WAL past the critical size) · **Dimension:** risk · **Object identity:** `slot:<name>` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 A replication slot in `pg_replication_slots` is **inactive** (`active = false` — no
 consumer connected) *and* it is holding back a material amount of WAL: at least
@@ -24,7 +24,7 @@ consumer connected) *and* it is holding back a material amount of WAL: at least
 the WAL the slot needed has *already been removed* — the slot is broken and its
 consumer can never resume from it. An active, healthy slot (`active = true`,
 `wal_status ≠ lost`) is skipped, and an inactive slot retaining less than 512 MiB is
-treated as a brief reconnection gap and skipped too. pgbot reports the retained size as
+treated as a brief reconnection gap and skipped too. queryshift reports the retained size as
 `pg_current_wal_lsn() - restart_lsn`.
 
 ## Why it matters
@@ -41,7 +41,7 @@ unrecoverable and needs a full rebuild.
 ## How to verify it yourself
 
 Run on the **primary** (where `pg_current_wal_lsn()` is valid). This reproduces
-pgbot's per-slot retained size and its active/lost state:
+queryshift's per-slot retained size and its active/lost state:
 
 ```sql
 SELECT slot_name,
@@ -98,7 +98,7 @@ expires = "2027-01-01"
 check for *every* slot, including a new orphan you create tomorrow — which is exactly
 how an unbounded WAL fill goes unnoticed until the primary's disk is full.
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - The retained size is a **point-in-time** read of `restart_lsn` vs. the current LSN;
   on a fast-writing primary it grows between the scan and your check.

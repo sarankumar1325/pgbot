@@ -14,9 +14,9 @@ related: [pg_stat_statements_missing]
 
 **Severity:** warn · **Dimension:** throughput · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** pg_stat_statements
 
-## What pgbot observed
+## What queryshift observed
 
-`pg_stat_statements` is discarding entries. pgbot reads
+`pg_stat_statements` is discarding entries. queryshift reads
 `pg_stat_statements_info.dealloc` — the running count of times the extension evicted
 least-used entries to make room — together with the current entry count against the
 `pg_stat_statements.max` ceiling. The literal condition (`pgssEvicting`) is
@@ -63,7 +63,7 @@ A non-zero, *growing* `deallocations` across two reads a while apart confirms ac
    `IN (...)` lists of varying length, or unparameterized DDL. Parameterize them so many
    executions collapse into a single slot.
 3. If neither is possible, **accept that low-frequency queries won't appear** and lean on
-   pgbot's own deltas rather than the pg_stat_statements top list for those.
+   queryshift's own deltas rather than the pg_stat_statements top list for those.
 
 ## When to ignore it
 
@@ -77,16 +77,16 @@ reason  = "…"
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - `dealloc` is a **cumulative counter since the last `pg_stat_statements_reset()`** — a
-  large value can be entirely historical. pgbot can't tell, from one read, whether eviction
+  large value can be entirely historical. queryshift can't tell, from one read, whether eviction
   is happening *now*; the two-read check above is how you confirm it's active.
 - It cannot see *which* entries were evicted — that's the whole problem. The evicted
-  statements are gone, so neither pgbot nor you can enumerate what's missing from the top
+  statements are gone, so neither queryshift nor you can enumerate what's missing from the top
   list.
 - It reads the count and the ceiling, not the memory cost; the right `max` depends on the
-  distinct-query cardinality of the application, which pgbot infers rather than measures.
+  distinct-query cardinality of the application, which queryshift infers rather than measures.
 
 ## Related
 

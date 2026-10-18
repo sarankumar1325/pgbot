@@ -14,9 +14,9 @@ related: [query_slowdown]
 
 **Severity:** info · **Dimension:** cost · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
-The cumulative statistics window is very old. pgbot computes `StatsWindowDays` as
+The cumulative statistics window is very old. queryshift computes `StatsWindowDays` as
 `now − stats_reset` (the age of the `pg_stat_database.stats_reset` timestamp, or the
 postmaster start if never reset) and fires when it is **at least 30 days**
 (`staleStatsWarnDays = 30`). Every rate and ratio derived from the cumulative counters has
@@ -46,7 +46,7 @@ WHERE stats_reset IS NOT NULL
 ORDER BY stats_reset ASC;   -- oldest (stalest) window first
 ```
 
-A `window_days` of 30+ (and often hundreds) is what pgbot flags. `stats_reset` is set by
+A `window_days` of 30+ (and often hundreds) is what queryshift flags. `stats_reset` is set by
 `pg_stat_reset()` / `pg_stat_statements_reset()`, and is otherwise the value from when the
 counters last started accumulating.
 
@@ -62,7 +62,7 @@ approach that fits how you read the numbers:
    ```
    Do this knowingly — it discards the history other tools may rely on, and cache-hit and
    similar ratios will read as noisy until the counters re-accumulate.
-2. **Prefer windowed/delta signals** for "what changed recently." pgbot's own cross-run
+2. **Prefer windowed/delta signals** for "what changed recently." queryshift's own cross-run
    deltas (and [query_slowdown](query_slowdown.md)) are computed between snapshots, so they
    isolate recent change regardless of how old the cumulative window is.
 3. **Adopt a periodic reset cadence** (e.g. monthly) if you routinely reason from cumulative
@@ -80,7 +80,7 @@ reason  = "…"
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It knows the **age** of the window, not what the counters would look like over a shorter,
   more relevant span — it can't retroactively re-slice cumulative totals into recent-only
@@ -90,7 +90,7 @@ expires = "2027-01-01"
   time, `pg_stat_bgwriter`/`pg_stat_checkpointer` another), so different metrics can span
   different windows than the one reported here.
 - On scale-to-zero serverless the opposite risk applies: the window can be *too young* (a
-  cold window under 900 s), which pgbot handles separately by suppressing counter-based
+  cold window under 900 s), which queryshift handles separately by suppressing counter-based
   findings.
 
 ## Related

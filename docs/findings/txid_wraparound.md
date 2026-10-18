@@ -14,7 +14,7 @@ related: [autovacuum_off, vacuum_horizon_blocked, mxid_wraparound]
 
 **Severity:** warn (critical when XID age past the critical threshold (approaching the 2.1B wall)) · **Dimension:** risk · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 The oldest unfrozen transaction-id age in the cluster —
 `max(age(datfrozenxid))` taken across every row of `pg_database` — has reached at
@@ -49,14 +49,14 @@ stretch is the worst possible time to start.
 ## How to verify it yourself
 
 ```sql
--- Reproduce pgbot's number: oldest datfrozenxid age across the cluster,
+-- Reproduce queryshift's number: oldest datfrozenxid age across the cluster,
 -- and how far that is toward the 2,147,483,647 wall.
 SELECT max(age(datfrozenxid))                                   AS max_xid_age,
        round(100.0 * max(age(datfrozenxid)) / 2147483647, 1)    AS pct_to_wrap
 FROM pg_database;
 ```
 
-pgbot reports a single cluster-wide age; it does **not** tell you which database or
+queryshift reports a single cluster-wide age; it does **not** tell you which database or
 table is the laggard. Drill down to the offending database:
 
 ```sql
@@ -85,7 +85,7 @@ rule that overrides everything else: **do nothing that consumes the remaining XI
 headroom or that stops the vacuum already trying to run.**
 
 1. **Find and release what pins the horizon.** Vacuum cannot freeze a row that is
-   still visible to some older snapshot. Check pgbot's
+   still visible to some older snapshot. Check queryshift's
    [vacuum_horizon_blocked](vacuum_horizon_blocked.md) finding, or look directly for
    a long-running or idle-in-transaction backend, a replication slot with an old
    `xmin`, `hot_standby_feedback` from a lagging replica, or an abandoned prepared
@@ -140,7 +140,7 @@ expires = "2027-01-01"
 Keep `expires` close — days, not months. If the age is still rising when it lapses,
 the freeze is losing and the suppression must not be renewed.
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It reports one cluster-wide maximum age, **not** which database or which table is
   nearest the wall. The per-database and per-table queries above are the only way to

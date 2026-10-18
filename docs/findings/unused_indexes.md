@@ -14,7 +14,7 @@ related: [redundant_indexes, low_hot_update_ratio]
 
 **Severity:** warn · **Dimension:** storage · **Object identity:** `schema.relation` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 One or more indexes have recorded **zero index scans** since stats began
 (`pg_stat_user_indexes.idx_scan = 0`, collected into `c.Indexes.Unused`) **and** are
@@ -24,7 +24,7 @@ bytes); below that an index isn't worth a recommendation. You can raise it with
 that back a primary-key or unique **constraint** are excluded upstream in the
 collector, because you can't drop those independently.
 
-pgbot **suppresses this finding entirely on a cold window** — if the stats window
+queryshift **suppresses this finding entirely on a cold window** — if the stats window
 is younger than 15 minutes (`ColdWindowThresholdSeconds = 900`), for example a
 serverless instance that just woke or a stats reset moments ago, the scan counters
 start from zero and "unused" would be meaningless (and acting on it dangerous).
@@ -42,7 +42,7 @@ thousands of times a second for an index no query ever consults.
 ## How to verify it yourself
 
 ```sql
--- pgbot's condition: zero scans, past the 1 MiB floor, constraint indexes excluded:
+-- queryshift's condition: zero scans, past the 1 MiB floor, constraint indexes excluded:
 SELECT s.schemaname || '.' || s.relname                       AS table,
        s.indexrelname                                          AS index,
        pg_size_pretty(pg_relation_size(s.indexrelid))          AS size,
@@ -91,12 +91,12 @@ Do **not** omit `object` — a bare `finding = "unused_indexes"` mutes the check
 next month silently accumulates cost. Scope it to the one relation and let the rest
 keep reporting.
 
-## What pgbot cannot see
+## What queryshift cannot see
 
-- **Scan counts are per-node.** `idx_scan` reflects reads on the node pgbot
+- **Scan counts are per-node.** `idx_scan` reflects reads on the node queryshift
   connected to. A read replica can be leaning on an index that looks completely
-  unused on the primary — dropping it there is the single most likely way pgbot
-  causes an outage. Confirm on every replica first. (pgbot raises this caveat
+  unused on the primary — dropping it there is the single most likely way queryshift
+  causes an outage. Confirm on every replica first. (queryshift raises this caveat
   automatically when it detects replication.)
 - Counters are **cumulative since the last stats reset**. A recent reset makes a
   heavily-used index look unused; the cold-window guard covers the first 15 minutes,

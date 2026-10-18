@@ -14,9 +14,9 @@ related: [txid_wraparound, autovacuum_disabled_on_table]
 
 **Severity:** critical · **Dimension:** risk · **Object identity:** `setting:autovacuum` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
-The `autovacuum` GUC reads exactly `off` — pgbot's literal test is
+The `autovacuum` GUC reads exactly `off` — queryshift's literal test is
 `settingParam(c, "autovacuum") == "off"`, which fires this `critical`
 unconditionally. It is a boolean, so there is no threshold in `[thresholds]` to tune.
 
@@ -85,7 +85,7 @@ reason  = "read-only replica; vacuuming driven from the primary, wraparound age 
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It reads the current setting, not **why** it was set, nor whether a manual `VACUUM`
   regime is compensating for the missing automation.

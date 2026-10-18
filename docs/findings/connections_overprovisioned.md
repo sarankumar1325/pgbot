@@ -14,9 +14,9 @@ related: [connection_saturation, work_mem_overcommit]
 
 **Severity:** info · **Dimension:** cost · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
-`max_connections` is set well above real usage. pgbot fires only when the ceiling is
+`max_connections` is set well above real usage. queryshift fires only when the ceiling is
 already large — **`max_connections >= tuneConnOverprovMax` = 200** — *and* observed
 usage is a small fraction of it — **`connectionsUsed < max_connections ×
 tuneConnOverprovUseFrac`**, i.e. **under 15%** of the configured slots in use. Both
@@ -86,7 +86,7 @@ reason  = "max_connections sized for documented failover/burst headroom; accepte
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It compares the ceiling against a **single snapshot** of usage. If your real peak
   concurrency lands between samples, the instantaneous count understates it and the

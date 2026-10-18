@@ -14,20 +14,20 @@ related: [unused_indexes]
 
 **Severity:** critical · **Dimension:** risk · **Object identity:** `schema.relation` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
-At least one index has `pg_index.indisvalid = false`. pgbot scans the schema for
+At least one index has `pg_index.indisvalid = false`. queryshift scans the schema for
 objects where `Kind == "index" && Invalid` and reports the count — there is no
 numeric threshold, this is a boolean gauge that trips on a single invalid index.
 
 An invalid index is the leftover of a `CREATE INDEX CONCURRENTLY` (or `REINDEX
 CONCURRENTLY`) that failed partway — a deadlock, a `statement_timeout`, a
 cancelled session, or a unique violation discovered during the build. **What it
-costs depends on the rest of its `pg_index` row**, so pgbot classifies each
+costs depends on the rest of its `pg_index` row**, so queryshift classifies each
 invalid index by `indisready`, `indislive`, and `pg_relation_size`, and the
 finding's severity follows the worst class present:
 
-| catalog state | what Postgres does with it | pgbot |
+| catalog state | what Postgres does with it | queryshift |
 |---|---|---|
 | `indisvalid = false`, `indisready = true` | never read, but **maintained on every write** — the build got past the populate phase (or a `REINDEX CONCURRENTLY` failed after the swap) | **critical**, impact 85 |
 | `indisvalid = false`, `indisready = false` (typically 0 bytes) | **ignored by `INSERT`/`UPDATE`** — the build failed *before* the index was populated; this is failed-build debris with no write cost | **warn**, impact 45 |
@@ -37,10 +37,10 @@ Every evidence line carries the state and size, e.g.
 `public.orders.orders_idx — indisvalid = false, indisready = false: failed-build
 debris, NOT maintained on writes (0 B)`.
 
-Whatever the class, pgbot **downgrades to `warn` and halves confidence to 0.5**
+Whatever the class, queryshift **downgrades to `warn` and halves confidence to 0.5**
 when it sees a live build in `pg_stat_progress_create_index`
 (`createIndexInProgress`): an index that is invalid *because it is still building*
-is normal, not a failure, so pgbot caveats it rather than telling you to drop an
+is normal, not a failure, so queryshift caveats it rather than telling you to drop an
 index that is about to become valid.
 
 ## Why it matters
@@ -58,7 +58,7 @@ and you won't discover it from the index list alone.
 ## How to verify it yourself
 
 ```sql
--- Every invalid index with the state pgbot classifies on, largest first:
+-- Every invalid index with the state queryshift classifies on, largest first:
 SELECT n.nspname || '.' || c.relname            AS index,
        i.indrelid::regclass                     AS table,
        i.indisready,                                -- false: NOT maintained on writes (failed-build debris)
@@ -98,7 +98,7 @@ but for a build that never completed, drop-and-recreate is cleaner because you
 restate the definition explicitly.
 
 If a build **is** running, do nothing — wait for it to finish. That is exactly the
-case pgbot downgrades to `warn` so you don't drop an index seconds before it goes
+case queryshift downgrades to `warn` so you don't drop an index seconds before it goes
 valid.
 
 Failed-build debris (`indisready = false`) needs the same drop-and-recreate — it
@@ -109,7 +109,7 @@ missing", not as "an index is slowing my writes".
 
 Effectively never for a genuinely failed build — a maintained invalid index is
 pure write cost, and debris means an index you intended is missing. The one
-defensible use is a known, long-running rebuild that pgbot couldn't see as
+defensible use is a known, long-running rebuild that queryshift couldn't see as
 in-progress (e.g. run from a session whose progress row isn't visible), while you
 track the rebuild to completion:
 
@@ -126,17 +126,17 @@ for *every* table, including ones you add later, which is how the next failed
 `CREATE INDEX CONCURRENTLY` gets hidden. Scope it to the one relation you've
 handled and let everything else keep tripping.
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It sees `indisvalid = false`, not **why** the build failed. The cause — deadlock,
   timeout, cancellation, or a duplicate-key violation — is only in the server log.
 - It can only distinguish a stalled build from a running one when
   `pg_stat_progress_create_index` has a visible row. If that view is empty because
   the build's session is gone (the common "it failed" case) or not visible to
-  pgbot, it grades on the catalog state alone — `critical` for a maintained
+  queryshift, it grades on the catalog state alone — `critical` for a maintained
   index, `warn` for debris.
-- `indisready = false` tells pgbot the index is not maintained on writes; it does
-  not tell it whether the failed build wrote pages before dying. pgbot reports
+- `indisready = false` tells queryshift the index is not maintained on writes; it does
+  not tell it whether the failed build wrote pages before dying. queryshift reports
   the relation size so you can see the storage side, but a nonzero size on a
   not-ready index is wasted space, not write cost.
 

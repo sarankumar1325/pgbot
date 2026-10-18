@@ -14,12 +14,12 @@ related: [autovacuum_starved, autovacuum_long_running]
 
 **Severity:** warn (critical when point-in-time; confirm it holds across runs) · **Dimension:** throughput · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
-At the moment pgbot sampled `pg_stat_activity`, the number of running autovacuum
+At the moment queryshift sampled `pg_stat_activity`, the number of running autovacuum
 workers was **at or above** `autovacuum_max_workers` — every worker slot was in use.
 The condition is `AutovacuumWorkers ≥ autovacuum_max_workers` (default cap **3**).
-This is a **single-moment count**, so pgbot reports it with modest confidence (0.5)
+This is a **single-moment count**, so queryshift reports it with modest confidence (0.5)
 and attaches a caveat: one glance can catch a normal, transient peak. It matters only
 if it *holds* across several runs.
 
@@ -37,7 +37,7 @@ many) tables at a time, no matter how much work is queued.
 ## How to verify it yourself
 
 ```sql
--- Live worker count vs the cap — pgbot's exact comparison. Re-run it a few times
+-- Live worker count vs the cap — queryshift's exact comparison. Re-run it a few times
 -- (or watch it) to tell a transient peak from sustained saturation:
 SELECT count(*)                                        AS active_workers,
        current_setting('autovacuum_max_workers')::int  AS max_workers,
@@ -88,9 +88,9 @@ reason  = "brief nightly catch-up window saturates workers, drains within the ho
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
-- It's a **point-in-time** count. pgbot cannot tell a fleeting peak from hours of
+- It's a **point-in-time** count. queryshift cannot tell a fleeting peak from hours of
   sustained saturation from one sample — that's why the caveat says to confirm across
   runs, and why this finding never asserts sustained pressure on its own.
 - It sees the worker *count*, not the **queue behind it**: how many tables are past

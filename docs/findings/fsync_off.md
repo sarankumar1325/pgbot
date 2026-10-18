@@ -14,9 +14,9 @@ related: [full_page_writes_off]
 
 **Severity:** critical · **Dimension:** risk · **Object identity:** `setting:fsync` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
-The `fsync` GUC reads exactly `off` — pgbot's literal test is
+The `fsync` GUC reads exactly `off` — queryshift's literal test is
 `settingParam(c, "fsync") == "off"`, which fires this `critical` unconditionally.
 There is no numeric threshold: the setting is boolean, so the finding is on or off
 with nothing in `[thresholds]` to tune.
@@ -72,7 +72,7 @@ reason  = "ephemeral CI instance, rebuilt from scratch every run; no durable dat
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It reads the current setting value, not **why** it was set or whether this instance
   is genuinely disposable — only you know if the data is expendable.

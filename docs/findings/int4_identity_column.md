@@ -14,12 +14,12 @@ related: [sequence_exhaustion]
 
 **Severity:** warn (critical for `int2`) · **Dimension:** risk · **Object identity:** `schema.relation` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 One or more columns backed by a sequence — an identity column
 (`pg_attribute.attidentity IN ('a','d')`) or a `serial`/owned sequence
 (a `pg_depend` `'a'` dependency from a sequence to the column) — have a **narrow
-integer type**: `int4` (`integer`) or `int2` (`smallint`). pgbot collects these
+integer type**: `int4` (`integer`) or `int2` (`smallint`). queryshift collects these
 into `c.Sequences.NarrowIdentity` and reports each as `schema.table.column is
 int4 — wraps at 2.1 billion`. This is **structural**: it reads the column type
 from the catalog and does not look at the sequence's current value, so it fires on
@@ -90,7 +90,7 @@ Do **not** omit `object` — a bare `finding = "int4_identity_column"` mutes the
 for *every* table, so the next unbounded `int` primary key a migration ships slips
 through. Scope it to the one relation you've reasoned about.
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It sees the **column type**, not your insert rate. It cannot tell you *when* a
   given `int4` will wrap — only that it will. A truly append-only table doing a few

@@ -1,11 +1,11 @@
-# pgbot findings
+# queryshift findings
 
-Every finding pgbot can emit, grouped by the kind of trouble it points at. Each
-page explains what pgbot observed, why it matters, how to verify it yourself, how
-to fix it, when to ignore it, and what pgbot cannot see.
+Every finding queryshift can emit, grouped by the kind of trouble it points at. Each
+page explains what queryshift observed, why it matters, how to verify it yourself, how
+to fix it, when to ignore it, and what queryshift cannot see.
 
-Read a page offline with `pgbot explain-finding <id>`. Suppress or tune any
-finding via [`.pgbot.toml`](../configuration.md).
+Read a page offline with `queryshift explain-finding <id>`. Suppress or tune any
+finding via [`.queryshift.toml`](../configuration.md).
 
 ## Risk — time to incident
 

@@ -14,7 +14,7 @@ related: [pgaudit_silent]
 
 **Severity:** info · **Dimension:** throughput · **Object identity:** `setting:log_statement` · **Requires:** pgaudit installed
 
-## What pgbot observed
+## What queryshift observed
 
 pgaudit session logging is active (`pgaudit.log` selects at least one class)
 **and** `log_statement` reads `all` — so every statement is recorded twice:
@@ -62,10 +62,10 @@ reason  = "pgBadger parses log_statement output; duplicate volume accepted"
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 Whether anything downstream depends on the plain statement-log format, and the
-actual log volume being produced — pgbot reads configuration, not the log.
+actual log volume being produced — queryshift reads configuration, not the log.
 
 ## Related
 

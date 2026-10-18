@@ -14,9 +14,9 @@ related: [archiving_failing]
 
 **Severity:** critical · **Dimension:** risk · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** primary, archive_mode=on
 
-## What pgbot observed
+## What queryshift observed
 
-`archive_mode` is `on` (or `always`), pgbot's current WAL sample has
+`archive_mode` is `on` (or `always`), queryshift's current WAL sample has
 `BytesPerSec > 0`, and `Context.CollectedAt - last_archived_time` exceeds the stall
 threshold, which is
 **`max(archive_timeout × 3, 1 hour)`** (`archiveStallFloorS = 3600`). Crucially this is
@@ -25,12 +25,12 @@ newer than `last_archived_time`, so [archiving_failing](archiving_failing.md) do
 fire. The elapsed time is measured at collection, not when a stored Context is viewed,
 so recomputing the same Context produces the same finding. A zero `CollectedAt` is
 unknown and does not fall back to the viewer's clock. As with all archiving checks,
-pgbot reads only `pg_stat_archiver` timestamps and never the `archive_command` value.
+queryshift reads only `pg_stat_archiver` timestamps and never the `archive_command` value.
 On a detected managed provider this is downgraded to `info`.
 
 These signals do not prove WAL was generated continuously since the last archive. The
 WAL rate is a short sample at collection time, and this finding is emitted only when a
-previous successful archive timestamp exists. pgbot does not substitute
+previous successful archive timestamp exists. queryshift does not substitute
 `pg_stat_archiver.stats_reset` when no archive has ever succeeded because that reset
 time says nothing about when `archive_mode` became effective or when an archivable WAL
 segment became eligible.
@@ -42,7 +42,7 @@ more dangerous than a clean failure because there may be no error to trip on. Po
 retains WAL that still needs archiving, so a confirmed archiver stall can widen the gap
 in archive coverage and grow `pg_wal` toward a disk-full outage. Common causes include a
 hung `archive_command`, a stopped archiver process, or a destination that accepts a
-connection but never completes the write. The single pgbot sample is a prompt to verify
+connection but never completes the write. The single queryshift sample is a prompt to verify
 that progress is actually stuck, not proof of how long WAL generation or archive
 failure has continued.
 
@@ -65,7 +65,7 @@ FROM   pg_stat_archiver;
 If `since_last_archive > stall_threshold`, `archive_mode` is on, `last_failed_time` is
 **not** newer than `last_archived_time`, and the primary is writing WAL right now
 (`SELECT pg_current_wal_lsn();` twice, a second apart, to confirm), the query reproduces
-the signals pgbot observed. Confirm that a completed segment is eligible and that
+the signals queryshift observed. Confirm that a completed segment is eligible and that
 `last_archived_time` still does not advance before diagnosing a stall. Check `pg_wal`
 size too: `SELECT pg_size_pretty(sum(size)) FROM pg_ls_waldir();`.
 
@@ -88,7 +88,7 @@ After confirming eligible WAL is not progressing, check *liveness* before config
    files from `pg_wal` by hand; let archiving catch up so Postgres recycles them safely.
 
 **On a managed provider this is the provider's responsibility.** RDS/Aurora, Cloud SQL,
-Azure, Supabase and Neon ship WAL and take backups outside `archive_command`, so pgbot
+Azure, Supabase and Neon ship WAL and take backups outside `archive_command`, so queryshift
 downgrades this to `info` — verify backup status in the provider console rather than
 touching archiving yourself.
 
@@ -107,14 +107,14 @@ reason  = "archive target throttling under investigation 2026-08-17; pg_wal moni
 expires = "2026-09-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It reads `last_archived_time`, not the archiver's internals — it can't tell a **hung**
   `archive_command` from a **dead** archiver process; both look like "no recent
   archive." The process check above is manual.
 - It **never reads the `archive_command` string** (a credentials/secret leak vector),
   so it can't point at a misconfigured command — only at the resulting silence.
-- The stall gate depends on pgbot's **point-in-time** WAL sample; a primary that was
+- The stall gate depends on queryshift's **point-in-time** WAL sample; a primary that was
   briefly idle during the scan can suppress a real stall. Conversely, activity that
   resumed just before the sample does not prove WAL flowed throughout the time since the
   last archive or that a completed segment has already become eligible.

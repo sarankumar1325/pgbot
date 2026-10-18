@@ -14,9 +14,9 @@ related: [fk_unindexed, stale_statistics]
 
 **Severity:** warn · **Dimension:** throughput · **Object identity:** `schema.relation` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
-A table is being read mostly by full scans. pgbot flags a table in
+A table is being read mostly by full scans. queryshift flags a table in
 `pg_stat_user_tables` when **all** of these hold:
 
 - it has at least **50,000** live rows (`seqScanTableMinRows = 50000`) — small
@@ -26,7 +26,7 @@ A table is being read mostly by full scans. pgbot flags a table in
 - **`seq_scan > idx_scan * 2`** — more than twice as many sequential scans as index
   scans.
 
-pgbot **suppresses this on a cold window** (stats younger than 15 minutes,
+queryshift **suppresses this on a cold window** (stats younger than 15 minutes,
 `ColdWindowThresholdSeconds = 900`), because scan counters start from zero and a
 fresh window would mislabel a healthy table. Confidence is 0.6, and the worst
 offender is ranked by `seq_scans × live_rows`.
@@ -42,7 +42,7 @@ a type mismatch between column and parameter, or stale planner statistics).
 ## How to verify it yourself
 
 ```sql
--- pgbot's exact condition, worst first (seq_scans × live_rows):
+-- queryshift's exact condition, worst first (seq_scans × live_rows):
 SELECT schemaname || '.' || relname                              AS table,
        seq_scan,
        idx_scan,
@@ -72,7 +72,7 @@ LIMIT 20;
 3. Sometimes the scan is **correct** — the query genuinely returns most of the
    table. Then leave it; an index would only add write cost.
 
-If the `hypopg` extension is installed, `pgbot advise` proposes candidate indexes
+If the `hypopg` extension is installed, `queryshift advise` proposes candidate indexes
 and reports only the ones the planner confirms it would use — nothing is built.
 
 ## When to ignore it
@@ -93,7 +93,7 @@ Do **not** omit `object` — a bare `finding = "seq_scan_heavy"` mutes the check
 *every* table, including ones you add later, so a real missing-index regression on
 a new table goes unseen. Scope it to the one relation you've verified.
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It sees the **ratio, not the query**. It cannot tell which statement scans, or
   whether the scan reflects a missing index, a bad plan, or an intentional
@@ -101,7 +101,7 @@ a new table goes unseen. Scope it to the one relation you've verified.
 - Scan counters are **cumulative since the last stats reset** and **per-node** — a
   replica's scans are not counted here, and a recent reset skews the ratio.
 - A seq scan on a table that fits in cache is far cheaper than the raw ratio
-  suggests. pgbot weights by table size but cannot see cache residency.
+  suggests. queryshift weights by table size but cannot see cache residency.
 - It cannot distinguish a "good" full scan (returns 90% of rows) from a "bad" one
   (returns 3 rows the long way).
 

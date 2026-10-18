@@ -14,10 +14,10 @@ related: [stale_statistics]
 
 **Severity:** warn · **Dimension:** latency · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** pg_stat_statements, a baseline snapshot
 
-## What pgbot observed
+## What queryshift observed
 
 Comparing this run against a stored **baseline snapshot**, a query's mean execution time
-regressed sharply. pgbot scans the `query.mean_ms` deltas and picks the worst one meeting
+regressed sharply. queryshift scans the `query.mean_ms` deltas and picks the worst one meeting
 both bars: the factor `After/Before` is **at least 2×** (`querySlowdownFactor = 2.0`) *and*
 the new mean is **at least 10 ms** (`querySlowdownMinMs = 10.0`), so trivially fast queries
 that double from 0.1 ms to 0.2 ms aren't flagged as noise. The mean itself is
@@ -25,7 +25,7 @@ that double from 0.1 ms to 0.2 ms aren't flagged as noise. The mean itself is
 
 This finding is **temporal** — it needs a prior run to diff against, which is exactly what a
 one-shot stats read cannot produce. If `pg_stat_statements` is currently evicting entries,
-pgbot attaches a load-bearing caveat and drops confidence from `0.8` to `0.4`, because the
+queryshift attaches a load-bearing caveat and drops confidence from `0.8` to `0.4`, because the
 query may have been evicted and re-entered (its counters reset to zero), making the
 "regression" an artifact rather than a real change.
 
@@ -52,7 +52,7 @@ SELECT queryid,
        left(query, 80)                    AS query
 FROM pg_stat_statements
 WHERE calls > 0
-  AND mean_exec_time >= 10          -- pgbot's 10 ms floor
+  AND mean_exec_time >= 10          -- queryshift's 10 ms floor
 ORDER BY mean_exec_time DESC
 LIMIT 20;
 ```
@@ -96,7 +96,7 @@ reason  = "…"
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It compares **cumulative means** (`total_exec_time/calls` since the counters were last
   reset), not individual executions. A change in the *mix* of parameters behind one
@@ -104,7 +104,7 @@ expires = "2027-01-01"
   any plan actually regressing.
 - When `pg_stat_statements` is at capacity and evicting, the "before" and "after" may not
   be the same accumulation of calls — a query evicted and re-entered starts its counters at
-  zero, so a low "before" mean can manufacture a fake regression. That is exactly why pgbot
+  zero, so a low "before" mean can manufacture a fake regression. That is exactly why queryshift
   attaches its caveat and drops confidence to 0.4 in that case (see
   [pgss_entries_evicted](pgss_entries_evicted.md)).
 - It sees that the mean rose, not *why*: it cannot capture the plan, the parameters, or the

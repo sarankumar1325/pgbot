@@ -14,7 +14,7 @@ related: [stale_statistics, table_never_vacuumed]
 
 **Severity:** warn · **Dimension:** latency · **Object identity:** `schema.relation` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 A table with at least **10,000** live tuples (`deadRatioTableMinRows`) has **no
 statistics at all** — both `last_analyze` and `last_autoanalyze` in
@@ -38,7 +38,7 @@ are hard to explain, because the SQL and the indexes all look correct. A single
 
 ```sql
 -- Tables above the 10k-row floor that have never been analyzed by hand or by
--- autoanalyze — exactly pgbot's condition:
+-- autoanalyze — exactly queryshift's condition:
 SELECT schemaname || '.' || relname AS table,
        n_live_tup,
        last_analyze,
@@ -90,7 +90,7 @@ reason  = "scratch table, trivial queries only; plan quality doesn't matter here
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - `last_analyze` and `last_autoanalyze` are reset by a **statistics reset**
   (`pg_stat_reset()`), which makes a long-analyzed table look never-analyzed. A recent

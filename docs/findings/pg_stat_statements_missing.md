@@ -14,9 +14,9 @@ related: [pgss_entries_evicted]
 
 **Severity:** info · **Dimension:** cost · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
-The `pg_stat_statements` extension is not available. pgbot marks its queries section
+The `pg_stat_statements` extension is not available. queryshift marks its queries section
 disabled when the view can't be read (`c.Queries == nil || !c.Queries.Enabled`) and emits
 this `info` finding. Either the extension isn't created in this database, or the module
 isn't in `shared_preload_libraries` so no query statistics are being collected at all.
@@ -25,7 +25,7 @@ isn't in `shared_preload_libraries` so no query statistics are being collected a
 
 `pg_stat_statements` is the single most useful Postgres observability extension: it's the
 only built-in source of per-query execution counts, total and mean time, rows, and buffer
-usage aggregated by normalized statement. Without it, an entire class of pgbot's analysis is
+usage aggregated by normalized statement. Without it, an entire class of queryshift's analysis is
 blind — there is no top-queries list, no [query_slowdown](query_slowdown.md) baseline diff,
 no way to point at *which* statement is expensive. You're left reasoning about the cluster
 in aggregate instead of per query.
@@ -75,9 +75,9 @@ reason  = "…"
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
-- Without the extension, pgbot cannot see **any per-query statistics at all** — no counts,
+- Without the extension, queryshift cannot see **any per-query statistics at all** — no counts,
   no timings, no top list. This finding is precisely the absence of that data; everything
   downstream of it is dark.
 - It cannot tell whether the module is merely un-preloaded (a restart fixes it) versus

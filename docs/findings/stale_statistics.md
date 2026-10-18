@@ -14,11 +14,11 @@ related: [query_slowdown, never_analyzed]
 
 **Severity:** warn · **Dimension:** latency · **Object identity:** `schema.relation` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 On a table above the **10,000**-tuple floor (`deadRatioTableMinRows`) that *has* been
 analyzed at least once, the number of rows changed since the last analyze
-(`n_mod_since_analyze`) is **≥ 2×** the table's autoanalyze trigger. pgbot computes
+(`n_mod_since_analyze`) is **≥ 2×** the table's autoanalyze trigger. queryshift computes
 the trigger the way Postgres does — `autovacuum_analyze_threshold +
 autovacuum_analyze_scale_factor × n_live_tup` (defaults **50** and **0.1**) — and
 honours **per-table reloption overrides** of both. The condition is
@@ -36,7 +36,7 @@ out-of-date shape of the data — an old row count, an old distribution, old
 most-common-values. That's the classic setup for a **plan flip**: a query that used a
 good index-driven plan yesterday suddenly picks a nested loop over millions of rows,
 or a sequential scan it should never have chosen. Nothing errors; a query just gets
-dramatically slower for no change in the SQL. The 2× multiplier means pgbot waits
+dramatically slower for no change in the SQL. The 2× multiplier means queryshift waits
 until the drift is comfortably past the point where autoanalyze *should* have fired.
 
 ## How to verify it yourself
@@ -44,7 +44,7 @@ until the drift is comfortably past the point where autoanalyze *should* have fi
 ```sql
 -- Tables whose modifications since analyze are past 2x their analyze trigger.
 -- Uses the GLOBAL threshold/scale; substitute reloption overrides if a table sets
--- its own (pgbot does):
+-- its own (queryshift does):
 SELECT s.schemaname || '.' || s.relname                              AS table,
        s.n_mod_since_analyze,
        (current_setting('autovacuum_analyze_threshold')::numeric
@@ -94,13 +94,13 @@ reason  = "nightly bulk load; ANALYZE runs at the end of the job, plans unaffect
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - `n_mod_since_analyze` is a **row-change count, not a distribution-change measure**.
   A million updates that don't move the column distributions won't hurt any plan;
-  pgbot can't tell those from a million that shift the data's shape completely.
+  queryshift can't tell those from a million that shift the data's shape completely.
 - It cannot connect stale stats to a *specific* slow query. When
-  [query_slowdown](query_slowdown.md) also fires this run, pgbot notes the two travel
+  [query_slowdown](query_slowdown.md) also fires this run, queryshift notes the two travel
   together but explicitly cannot prove the slow query touches these tables — it can't
   map a normalized query back to its relations.
 - The counter is zeroed by a statistics reset, which can make a genuinely-drifted

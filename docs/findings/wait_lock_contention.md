@@ -14,10 +14,10 @@ related: [blocking_chains]
 
 **Severity:** warn · **Dimension:** latency · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** ASH sampling (ash-hz>0)
 
-## What pgbot observed
+## What queryshift observed
 
 While sampling `pg_stat_activity` many times over the collection window (active-session
-history, at `--ash-hz`, default **10 Hz**), pgbot found a single normalized query
+history, at `--ash-hz`, default **10 Hz**), queryshift found a single normalized query
 whose samples were dominated by heavyweight-lock waits. The literal condition is
 `q.Count >= waitLockQueryMinSamples && q.LockShare > waitLockContentionShare`: the query
 was caught active in **at least 5** samples (`waitLockQueryMinSamples`) and **more than
@@ -40,14 +40,14 @@ blocking chains and connection saturation that take an application down.
 
 ## How to verify it yourself
 
-The wait profile is a *sample*, so reproduce it the way pgbot does: poll
+The wait profile is a *sample*, so reproduce it the way queryshift does: poll
 `pg_stat_activity` repeatedly (a few times a second for a minute) and tally where active
 backends are waiting. On PG14+ you can attribute it per `query_id`:
 
 ```sql
 -- READ-ONLY. Run this many times in a loop (e.g. \watch 0.1) and aggregate:
 -- the fraction of an active query's samples on wait_event_type='Lock' is what
--- pgbot's LockShare measures. A single snapshot is not enough — sample repeatedly.
+-- queryshift's LockShare measures. A single snapshot is not enough — sample repeatedly.
 SELECT query_id,
        wait_event_type,
        wait_event,
@@ -102,7 +102,7 @@ reason  = "…"
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - A wait profile is a **distribution over sampled moments**, never an exact lock-wait
   time. The finding always carries its sample count (`q.Count` and the total); a share

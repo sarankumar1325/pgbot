@@ -14,10 +14,10 @@ related: [pgaudit_logs_parameters, pgaudit_double_logging]
 
 **Severity:** warn · **Dimension:** risk · **Object identity:** `setting:pgaudit.log` · **Requires:** pgaudit installed
 
-## What pgbot observed
+## What queryshift observed
 
 The pgaudit extension is installed (it appears in `pg_extension`), but
-`pgaudit.log` is unset or reads `none` — pgbot's literal test is that the
+`pgaudit.log` is unset or reads `none` — queryshift's literal test is that the
 lower-cased, trimmed value is `""` or `"none"`. With no log classes selected,
 pgaudit writes **no audit records at all**.
 
@@ -65,7 +65,7 @@ relation-scoped requirements.
 
 The extension was installed for evaluation and auditing is intentionally off,
 or auditing is configured per-database/per-role (`ALTER DATABASE … SET
-pgaudit.log`) on databases pgbot did not inspect — the global GUC then reads
+pgaudit.log`) on databases queryshift did not inspect — the global GUC then reads
 empty while the databases that matter are audited.
 
 ```toml
@@ -76,9 +76,9 @@ reason  = "auditing configured per-database via ALTER DATABASE, not globally"
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
-pgbot reads configuration over SQL; it cannot read the server log, so it
+queryshift reads configuration over SQL; it cannot read the server log, so it
 cannot confirm records are actually being written, rotated, or retained. It
 also cannot see log shipping — a perfectly configured pgaudit whose logs are
 deleted hourly still fails the compliance requirement.

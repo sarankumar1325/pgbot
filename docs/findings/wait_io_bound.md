@@ -14,10 +14,10 @@ related: [low_cache_hit, seq_scan_heavy]
 
 **Severity:** warn · **Dimension:** throughput · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** ASH sampling (ash-hz>0), track_io_timing
 
-## What pgbot observed
+## What queryshift observed
 
 Sampling `pg_stat_activity` many times over the collection window (active-session history,
-at `--ash-hz`, default **10 Hz**), pgbot found the whole window dominated by storage waits.
+at `--ash-hz`, default **10 Hz**), queryshift found the whole window dominated by storage waits.
 The literal condition is `share("IO") > waitIOBoundShare` where `waitIOBoundShare = 0.50`:
 **more than 50%** of all active-session samples had `wait_event_type = 'IO'` (e.g.
 `DataFileRead`, `DataFileWrite`, `WALWrite`) — active backends were waiting on the disk,
@@ -42,7 +42,7 @@ tallying the `IO` share of active backends:
 
 ```sql
 -- READ-ONLY. Run repeatedly (e.g. \watch 0.1) over a minute and aggregate:
--- the fraction of active samples in wait_event_type='IO' is what pgbot compares
+-- the fraction of active samples in wait_event_type='IO' is what queryshift compares
 -- against 50%. One snapshot is not a profile — sample many times.
 SELECT wait_event_type,
        wait_event,
@@ -96,7 +96,7 @@ reason  = "…"
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - A wait profile is a **distribution over sampled moments**, never an exact I/O time. The
   finding carries its sample count; a 50%+ share off a thin sample is suggestive, not

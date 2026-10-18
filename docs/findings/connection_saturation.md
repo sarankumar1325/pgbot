@@ -14,9 +14,9 @@ related: [connections_overprovisioned, idle_in_transaction]
 
 **Severity:** warn (critical when at/near max_connections) · **Dimension:** risk · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
-Open connections have reached a high fraction of `max_connections`. pgbot computes
+Open connections have reached a high fraction of `max_connections`. queryshift computes
 `frac = connectionsUsed / connectionsMax` and fires at **`connSaturationWarn` = 0.85
 (85%)** as `warn`, escalating to `critical` at **`connSaturationCrit` = 0.95 (95%)**.
 Confidence is `1.0` — it is a direct count against a hard ceiling — and the impact
@@ -90,7 +90,7 @@ reason  = "load test week of 2026-12; peak ~90% of max_connections expected, mon
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It sees a **snapshot** count, not the peak between samples — a burst that briefly
   hit the wall and receded may not appear, and a momentary spike it caught may not

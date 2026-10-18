@@ -14,7 +14,7 @@ related: [autovacuum_disabled_on_table, never_analyzed]
 
 **Severity:** warn · **Dimension:** risk · **Object identity:** `schema.relation` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 A table with at least **10,000** live tuples (`deadRatioTableMinRows`) has **no
 record of ever being vacuumed** — both `last_vacuum` and `last_autovacuum` in
@@ -38,7 +38,7 @@ disabled or being starved, and this is the first table to show it.
 
 ```sql
 -- Tables above the 10k-row floor that have never been vacuumed by hand or by
--- autovacuum — exactly pgbot's condition:
+-- autovacuum — exactly queryshift's condition:
 SELECT schemaname || '.' || relname AS table,
        n_live_tup,
        n_dead_tup,
@@ -93,7 +93,7 @@ reason  = "new append-only table; autovacuum enabled, freezing will run when nee
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - `last_vacuum` and `last_autovacuum` are reset by a **statistics reset**
   (`pg_stat_reset()`), which makes a long-maintained table look never-vacuumed. A

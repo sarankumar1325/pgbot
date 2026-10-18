@@ -14,10 +14,10 @@ related: [idle_in_transaction, vacuum_horizon_blocked]
 
 **Severity:** warn · **Dimension:** risk · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 The oldest open transaction had been running for at least **`longXactWarnSec` = 300
-seconds (5 minutes)** when pgbot sampled `pg_stat_activity`
+seconds (5 minutes)** when queryshift sampled `pg_stat_activity`
 (`c.Activity.LongestXactSec >= longXactWarnSec`). Age is measured from `xact_start`,
 so it counts the whole transaction — every statement since `BEGIN` — not just the
 current one. Severity is `warn`; the impact score rises with age
@@ -50,7 +50,7 @@ ORDER BY xact_start
 LIMIT 20;
 ```
 
-The largest `xact_age` here is pgbot's `LongestXactSec`. Note `state` too: if it is
+The largest `xact_age` here is queryshift's `LongestXactSec`. Note `state` too: if it is
 `active`, the transaction is genuinely working; if it is `idle in transaction`, it
 is stuck between statements — see [idle_in_transaction](idle_in_transaction.md).
 
@@ -83,7 +83,7 @@ reason  = "nightly pg_dump runs ~20 min; vacuum-horizon impact understood, track
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It sees a **snapshot** of `pg_stat_activity`, not the transaction's history — it
   knows the age, not what the transaction has done or how much longer it will run.

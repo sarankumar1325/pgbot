@@ -14,9 +14,9 @@ related: [long_running_transaction, idle_in_transaction]
 
 **Severity:** info · **Dimension:** risk · **Object identity:** `setting:statement_timeout` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
-The `statement_timeout` GUC reads exactly `0` — pgbot's literal test is
+The `statement_timeout` GUC reads exactly `0` — queryshift's literal test is
 `settingParam(c, "statement_timeout") == "0"`, where `0` means *disabled*: no
 statement is ever cancelled for running too long. There is no threshold to tune; the
 finding is `info`, a nudge rather than a defect.
@@ -69,7 +69,7 @@ reason  = "OLAP cluster; per-query timeouts enforced in the application, global 
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It reads the **cluster default** only. It cannot see per-role or per-session
   `statement_timeout` overrides (a session may set its own), so an unset global does

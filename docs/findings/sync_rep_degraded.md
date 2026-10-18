@@ -14,12 +14,12 @@ related: [replica_lag_time, replica_disconnected]
 
 **Severity:** critical · **Dimension:** risk · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** replication, synchronous_standby_names set
 
-## What pgbot observed
+## What queryshift observed
 
 `synchronous_standby_names` requires **N** sync standbys, `synchronous_commit` is
 one of `on` / `remote_write` / `remote_apply` (so commits actually wait for them),
 but fewer than **N** standbys are connected in `sync` or `quorum` state right now.
-pgbot parses the required count out of `synchronous_standby_names` the way Postgres
+queryshift parses the required count out of `synchronous_standby_names` the way Postgres
 does: `ANY N (...)` or `FIRST N (...)` → **N**, a bare leading `N (...)` → **N**, a
 plain list of names → **1**, and an empty value → **0** (sync rep not in use, so this
 never fires). It then counts replicas in `pg_stat_replication` whose `sync_state` is
@@ -41,7 +41,7 @@ you don't. Either way the RPO you designed for is not the RPO you have.
 ## How to verify it yourself
 
 Run this on the **primary**. It shows what the config asks for and how many
-`sync`/`quorum` standbys are actually connected — reproduce pgbot's `got` vs
+`sync`/`quorum` standbys are actually connected — reproduce queryshift's `got` vs
 `required`:
 
 ```sql
@@ -49,7 +49,7 @@ Run this on the **primary**. It shows what the config asks for and how many
 SHOW synchronous_standby_names;   -- required N is parsed from ANY/FIRST N, or 1 for a bare list
 SHOW synchronous_commit;          -- must be on / remote_write / remote_apply to wait at all
 
--- How many standbys count toward it right now (pgbot's "got"):
+-- How many standbys count toward it right now (queryshift's "got"):
 SELECT sync_state, count(*)
 FROM   pg_stat_replication
 WHERE  sync_state IN ('sync', 'quorum')
@@ -103,7 +103,7 @@ expires = "2027-01-01"
 A suppressed `critical` still renders in the report (marked); the ignore only removes
 it from the exit code, so a stale entry here quietly hides a real durability gap.
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It reports a **point-in-time** count. A standby that flaps in and out of `sync`
   state is only caught if it is disconnected during the scan.

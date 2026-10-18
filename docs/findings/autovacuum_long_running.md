@@ -14,10 +14,10 @@ related: [autovacuum_saturated]
 
 **Severity:** info · **Dimension:** throughput · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 An autovacuum worker's transaction has been open for **≥ 3600 seconds** — one hour
-(`autovacuumLongRunSec`). pgbot takes the longest-running autovacuum worker's
+(`autovacuumLongRunSec`). queryshift takes the longest-running autovacuum worker's
 transaction age (`AutovacuumMaxAgeSec`, from `pg_stat_activity`) and reports it when
 it crosses the hour mark. This is **info**, not a warning: a long autovacuum is
 usually a large table catching up, which is exactly what autovacuum is supposed to do.
@@ -36,7 +36,7 @@ is *visible*, not so you cancel it: look before you leap.
 ## How to verify it yourself
 
 ```sql
--- Longest-running autovacuum workers and how long each has been going. pgbot fires
+-- Longest-running autovacuum workers and how long each has been going. queryshift fires
 -- when the longest crosses 3600s (1h):
 SELECT pid,
        now() - xact_start AS running_for,
@@ -93,7 +93,7 @@ reason  = "big_events vacuum routinely runs several hours; expected, monitored"
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It reads the worker's **transaction age**, not its **progress**. It cannot tell a
   vacuum that's 90% done from one that's wedged — only `pg_stat_progress_vacuum` (the

@@ -14,17 +14,17 @@ related: [unused_indexes, low_hot_update_ratio]
 
 **Severity:** info · **Dimension:** storage · **Object identity:** `schema.relation` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 One or more indexes whose leading columns are a **prefix of (or identical to)**
 another index on the same table — so the wider index already answers the same
-lookups. pgbot detects this **structurally** in the collector by `indkey`/`indclass`
+lookups. queryshift detects this **structurally** in the collector by `indkey`/`indclass`
 containment (columns *and* operator classes must match) and reports them from
 `c.Indexes.Redundant`. There is no numeric threshold; each redundant index is
 listed as `table.name (size) — prefix of covering_index`. The same
 constraint-index exclusions the unused-index rule uses apply here.
 
-Because the check is structural, it is `info`, not `warn`: pgbot proves the wider
+Because the check is structural, it is `info`, not `warn`: queryshift proves the wider
 index *could* serve the narrower one's queries, not that it currently does.
 
 ## Why it matters
@@ -38,7 +38,7 @@ WAL, and its vacuum overhead. It's a duplicate tax hiding behind a distinct name
 
 ```sql
 -- B-tree indexes on the same table whose columns are a strict leading prefix of
--- another index's columns — the structural redundancy pgbot reports:
+-- another index's columns — the structural redundancy queryshift reports:
 WITH idx AS (
   SELECT i.indrelid::regclass                              AS tbl,
          (n.nspname || '.' || c.relname)                   AS index,
@@ -98,14 +98,14 @@ Do **not** omit `object` — a bare `finding = "redundant_indexes"` mutes the ch
 for *every* table, including ones you add later, hiding future duplicate indexes.
 Scope it to the one relation you've reviewed.
 
-## What pgbot cannot see
+## What queryshift cannot see
 
-- The detection is **structural, not usage-based**. pgbot knows the wider index
+- The detection is **structural, not usage-based**. queryshift knows the wider index
   *can* serve the same lookups; it does not know whether that wider index is
   actually used, or whether the narrower one is faster for a specific hot query
   because it is smaller. That uncertainty is why the finding is `info`.
 - Index usage is **per-node**; a replica's access paths can differ, so an index
-  that looks redundant on the primary may be the one a replica prefers. pgbot
+  that looks redundant on the primary may be the one a replica prefers. queryshift
   raises this caveat when it detects replication.
 - It compares columns and operator classes, but subtleties like `INCLUDE` payloads,
   collations, or `NULLS FIRST/LAST` ordering can make two "prefix-equal" indexes

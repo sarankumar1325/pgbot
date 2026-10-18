@@ -14,13 +14,13 @@ related: [archiving_failing]
 
 **Severity:** warn (downgraded to info on a managed provider) · **Dimension:** risk · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** primary
 
-## What pgbot observed
+## What queryshift observed
 
 `archive_mode` is `off`, `wal_level` is **not** `minimal`, and no replication is in use
 (no connected standbys in `pg_stat_replication` and this node is not itself a replica).
 In other words: WAL is being written at a level that *could* feed archiving or
 replication, but none is happening — so there is no point-in-time-recovery mechanism by
-this route. pgbot reads only the settings and the replication state; it does **not** read
+this route. queryshift reads only the settings and the replication state; it does **not** read
 any `archive_command` value (there's nothing to run while `archive_mode = off`). This
 surfaces as an informational finding, and on a detected managed provider it is likewise
 `info` with a note that the provider's backups run outside `archive_command`.
@@ -37,7 +37,7 @@ during an incident.
 
 ## How to verify it yourself
 
-Run on the **primary**. This reproduces all three conditions pgbot checks:
+Run on the **primary**. This reproduces all three conditions queryshift checks:
 
 ```sql
 -- The two settings:
@@ -95,7 +95,7 @@ expires = "2027-01-01"
 Since this is already `info` (it doesn't affect the exit code the way a warn/critical
 does), an ignore here is mostly about keeping the report clean for a deliberate choice.
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It cannot see a **managed provider's own backup mechanism** — snapshots and WAL
   shipping happen outside `archive_command`, so "archiving off" at the SQL level says

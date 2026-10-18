@@ -14,9 +14,9 @@ related: [long_running_transaction, idle_in_transaction]
 
 **Severity:** critical · **Dimension:** risk · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
-At the instant pgbot sampled the lock graph, **at least one session was waiting on
+At the instant queryshift sampled the lock graph, **at least one session was waiting on
 a lock held by another session** (`c.Locks.BlockedCount > 0`). There is no
 threshold to cross and nothing to override in `[thresholds]` — a single blocked
 session trips it, and the severity is always `critical` at confidence `1.0`,
@@ -40,7 +40,7 @@ checkouts, and what began as one slow transaction turns into a cluster-wide stal
 ## How to verify it yourself
 
 `pg_blocking_pids()` (PostgreSQL 9.6+) resolves the full set of PIDs blocking each
-waiter — this is exactly the blocked/blocking relationship pgbot counts:
+waiter — this is exactly the blocked/blocking relationship queryshift counts:
 
 ```sql
 SELECT a.pid                                   AS blocked_pid,
@@ -96,7 +96,7 @@ reason  = "migration window 2027-01-01: brief ACCESS EXCLUSIVE waits expected; t
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It sees a **single snapshot** of the lock graph, not the whole history. A chain
   that formed and cleared between samples is invisible; conversely one it reports

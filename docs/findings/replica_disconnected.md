@@ -14,10 +14,10 @@ related: [sync_rep_degraded, replication_slot_inactive]
 
 **Severity:** warn · **Dimension:** risk · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** replication
 
-## What pgbot observed
+## What queryshift observed
 
 A standby that was present in `pg_stat_replication` at the **last run** is absent
-**now**. pgbot detects this from the run-over-run diff (the `replication.standby_gone`
+**now**. queryshift detects this from the run-over-run diff (the `replication.standby_gone`
 delta between the stored baseline and the current scan) and names the standby that
 vanished. This is inherently a temporal finding: it needs a prior baseline, because a
 disconnected standby simply isn't in `pg_stat_replication` anymore — there is no
@@ -52,9 +52,9 @@ ORDER  BY backend_start;
 ```
 
 A standby you know should be streaming but is missing from this result is the one
-pgbot flagged. If it reconnected between pgbot's scan and your query, `backend_start`
+queryshift flagged. If it reconnected between queryshift's scan and your query, `backend_start`
 will be very recent — evidence it dropped and came back. Cross-check the primary's log
-for `walsender` disconnect messages around pgbot's run time, and check
+for `walsender` disconnect messages around queryshift's run time, and check
 `pg_replication_slots` for the slot that standby used (now `active = false`).
 
 ## How to fix it
@@ -87,10 +87,10 @@ reason  = "decommissioned reporting standby s3 on 2026-08-17; its slot was dropp
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - Detection is **baseline-dependent**. With no prior run (first scan, or a wiped
-  baseline) a standby that is already gone is simply never seen — pgbot can't miss what
+  baseline) a standby that is already gone is simply never seen — queryshift can't miss what
   it never recorded.
 - It sees the disconnect, not the **reason**: down host, network break, dropped slot,
   and planned teardown all look identical from `pg_stat_replication`.

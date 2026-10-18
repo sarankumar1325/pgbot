@@ -14,7 +14,7 @@ related: [subscription_worker_down, replication_slot_inactive]
 
 **Severity:** critical · **Dimension:** risk · **Object identity:** `schema.table` (see [configuration](../configuration.md)) · **Requires:** a publication that replicates `UPDATE` or `DELETE`
 
-## What pgbot observed
+## What queryshift observed
 
 A table belongs to a publication that replicates `UPDATE` or `DELETE`, but its
 replica identity cannot identify a row:
@@ -115,7 +115,7 @@ reason  = "append-only event log; no UPDATE/DELETE in the writer (OPS-2291)"
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - Whether anything actually issues an `UPDATE` or `DELETE` against the table. The
   finding reports that the write *would* fail, not that it has.
@@ -124,7 +124,7 @@ expires = "2027-01-01"
 - Row filters and column lists on the publication, which narrow what replicates
   but do not remove the identity requirement.
 - A partitioned table published with `publish_via_partition_root` replicates as
-  the root; pgbot names the relation the catalog lists, which may be a partition.
+  the root; queryshift names the relation the catalog lists, which may be a partition.
 
 ## Related
 

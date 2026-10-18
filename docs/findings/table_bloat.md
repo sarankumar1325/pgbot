@@ -14,15 +14,15 @@ related: [low_hot_update_ratio, vacuum_horizon_blocked, autovacuum_starved]
 
 **Severity:** warn · **Dimension:** storage · **Object identity:** `schema.relation` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 On a table with at least **10,000** total tuples (`deadRatioTableMinRows`), the
 dead-tuple ratio was **≥ 20%** (`deadRatioWarn`, the `dead_ratio_warn` key in
 `[thresholds]`). The ratio is `n_dead_tup / (n_live_tup + n_dead_tup)` from
-`pg_stat_user_tables`. pgbot ranks the offenders by *dead bytes* —
+`pg_stat_user_tables`. queryshift ranks the offenders by *dead bytes* —
 `dead_ratio × table size` — so the "worst" table is the one wasting the most disk,
 not merely the highest percentage. If no autovacuum has run recently on the worst
-table (`last_autovacuum` is null), pgbot treats the bloat as *not being kept in
+table (`last_autovacuum` is null), queryshift treats the bloat as *not being kept in
 check*; if autovacuum has run recently, it discounts the score, since the bloat is
 likely transient churn that will be reclaimed.
 
@@ -40,7 +40,7 @@ the OS, so it rarely shrinks on its own.
 ## How to verify it yourself
 
 ```sql
--- The ratio pgbot computes, worst first. Matches deadRatioWarn (0.20) and the
+-- The ratio queryshift computes, worst first. Matches deadRatioWarn (0.20) and the
 -- 10k-row floor:
 SELECT schemaname || '.' || relname                                      AS table,
        n_live_tup,
@@ -105,7 +105,7 @@ reason  = "high-churn queue table; dead space is reused in place, file size stab
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - `n_dead_tup` is an **estimate** maintained by the cumulative statistics system,
   not a page-level count. A stats reset zeroes it, and heavy churn between

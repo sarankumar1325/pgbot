@@ -14,10 +14,10 @@ related: [seq_scan_heavy]
 
 **Severity:** warn · **Dimension:** latency · **Object identity:** `schema.relation` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 One or more foreign-key constraints (`pg_constraint.contype = 'f'`) have **no index
-on the child** whose leading columns match the FK columns. pgbot collects these
+on the child** whose leading columns match the FK columns. queryshift collects these
 into `c.Indexes.UnindexedFKs` and reports each as
 `schema.child_table (child_size) on (fk_columns)`. There is no numeric threshold —
 any FK with no leading-column index on the child trips the rule; the child's size
@@ -87,7 +87,7 @@ Do **not** omit `object` — a bare `finding = "fk_unindexed"` mutes the check f
 without its FK index silently carries a full-scan-on-delete landmine. Scope it to
 the one relation you've reasoned about.
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It sees the **missing index**, not your workload. It cannot tell whether you ever
   actually `DELETE` or key-`UPDATE` parent rows. If you never do, the index only

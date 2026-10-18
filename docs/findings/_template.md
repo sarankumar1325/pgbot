@@ -13,7 +13,7 @@ related: []               # finding ids that travel with this one
 
 **Severity:** warn (critical when …) · **Dimension:** storage · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
 The literal condition, with the exact threshold and the constant name that
 overrides it in `[thresholds]`.
@@ -24,7 +24,7 @@ Two or three sentences. Consequence, not restatement.
 
 ## How to verify it yourself
 
-A copy-pasteable, read-only query the user can run to confirm pgbot is right.
+A copy-pasteable, read-only query the user can run to confirm queryshift is right.
 
 ```sql
 SELECT …;
@@ -45,7 +45,7 @@ reason  = "…"
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 The limits: per-node scan counts, cumulative counters, estimate vs measurement.
 

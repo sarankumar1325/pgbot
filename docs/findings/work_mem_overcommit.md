@@ -14,9 +14,9 @@ related: [work_mem_low, connections_overprovisioned]
 
 **Severity:** warn · **Dimension:** risk · **Object identity:** `setting:work_mem` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
-pgbot computed worst-case sort memory as `work_mem × max_connections` and found it
+queryshift computed worst-case sort memory as `work_mem × max_connections` and found it
 **greater than** `effective_cache_size`. The literal condition is
 `parseMemBytes(work_mem) × max_connections > parseMemBytes(effective_cache_size)`,
 all three read straight from the GUCs. There is no tunable threshold — it is a direct
@@ -36,7 +36,7 @@ foot-gun: everything is fine until a traffic spike lines up the wrong queries.
 ## How to verify it yourself
 
 ```sql
--- Mirror pgbot's arithmetic, read-only:
+-- Mirror queryshift's arithmetic, read-only:
 SELECT current_setting('work_mem')             AS work_mem,
        current_setting('max_connections')      AS max_connections,
        current_setting('effective_cache_size') AS effective_cache_size,
@@ -79,7 +79,7 @@ reason  = "PgBouncer caps active backends at 40; max_connections ceiling is theo
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It multiplies by `max_connections`, the ceiling, not by **actual** concurrency.
   Behind a pooler the real worst case is far smaller, so this can over-warn.
@@ -87,7 +87,7 @@ expires = "2027-01-01"
   cache, not a measurement of free RAM, so the comparison is a rough proxy rather than
   a precise memory accounting.
 - It uses one `work_mem` per connection, but a single query can hold several `work_mem`
-  allocations at once — so the real worst case can also be *higher* than what pgbot
+  allocations at once — so the real worst case can also be *higher* than what queryshift
   computes.
 
 ## Related

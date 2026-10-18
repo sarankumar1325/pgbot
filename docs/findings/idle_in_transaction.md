@@ -14,9 +14,9 @@ related: [long_running_transaction, vacuum_horizon_blocked]
 
 **Severity:** warn (critical when escalates with the number and age of idle-in-transaction sessions) · **Dimension:** risk · **Object identity:** `cluster` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
-At least one session was in state **`idle in transaction`** when pgbot sampled
+At least one session was in state **`idle in transaction`** when queryshift sampled
 `pg_stat_activity` (`c.Activity.IdleInTransaction > 0`) — it has an open
 transaction but is running no statement, waiting on the client. The finding starts
 at `info`; it **escalates to `warn` once the longest open transaction reaches
@@ -50,7 +50,7 @@ WHERE state IN ('idle in transaction', 'idle in transaction (aborted)')
 ORDER BY xact_start;
 ```
 
-The row count is pgbot's `IdleInTransaction`; the largest `xact_age` is the
+The row count is queryshift's `IdleInTransaction`; the largest `xact_age` is the
 `LongestXactSec` that drives the escalation to `warn`. `idle in transaction
 (aborted)` is the same hazard after an error left the transaction unrollbacked — it
 still holds its snapshot.
@@ -90,7 +90,7 @@ reason  = "nightly ETL parks a short idle-in-transaction window; accepted, track
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It sees a **snapshot**, not history. A session that flickers into and out of
   `idle in transaction` between samples may be undercounted, and one it reports may

@@ -14,9 +14,9 @@ related: [fsync_off]
 
 **Severity:** critical · **Dimension:** risk · **Object identity:** `setting:full_page_writes` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
-The `full_page_writes` GUC reads exactly `off` — pgbot's literal test is
+The `full_page_writes` GUC reads exactly `off` — queryshift's literal test is
 `settingParam(c, "full_page_writes") == "off"`, which fires this `critical`
 unconditionally. It is a boolean, so there is no threshold in `[thresholds]` to tune.
 
@@ -71,11 +71,11 @@ reason  = "storage vendor guarantees atomic 8KB page writes; verified in <ticket
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It reads the current setting, not **why** it was set — and specifically not whether
   your storage truly performs atomic 8 KB writes, which is the only thing that makes
-  `off` safe. That guarantee lives below Postgres, where pgbot has no visibility.
+  `off` safe. That guarantee lives below Postgres, where queryshift has no visibility.
 - It cannot tell a deliberate, storage-justified `off` from an accidental one.
 - A managed provider may set and lock this GUC; the value shown may be the provider's.
 

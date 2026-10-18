@@ -14,9 +14,9 @@ related: [checksum_failures]
 
 **Severity:** info · **Dimension:** risk · **Object identity:** `setting:data_checksums` (see [configuration](../configuration.md)) · **Requires:** PG12+
 
-## What pgbot observed
+## What queryshift observed
 
-The read-only `data_checksums` GUC reads exactly `off` — pgbot's literal test is
+The read-only `data_checksums` GUC reads exactly `off` — queryshift's literal test is
 `settingParam(c, "data_checksums") == "off"`. `data_checksums` is a preset parameter
 fixed at `initdb` time, so there is no threshold to tune; the finding is `info`, a note
 about a missing safety layer rather than an active problem.
@@ -74,7 +74,7 @@ reason  = "managed provider created the cluster without checksums; can't re-init
 expires = "2027-01-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It reads the cluster's checksum state, not whether the storage layer beneath does its
   **own** block-level integrity checking. Many cloud volumes and filesystems (e.g. ZFS)

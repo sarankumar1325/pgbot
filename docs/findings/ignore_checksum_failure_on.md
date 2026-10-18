@@ -14,9 +14,9 @@ related: [checksum_failures, checksums_disabled]
 
 **Severity:** critical · **Dimension:** risk · **Object identity:** `setting:ignore_checksum_failure` (see [configuration](../configuration.md)) · **Requires:** —
 
-## What pgbot observed
+## What queryshift observed
 
-The `ignore_checksum_failure` GUC reads exactly `on` — pgbot's literal test is
+The `ignore_checksum_failure` GUC reads exactly `on` — queryshift's literal test is
 `settingParam(c, "ignore_checksum_failure") == "on"`, which fires this `critical`
 unconditionally. It is a boolean, so there is no threshold to tune.
 
@@ -78,7 +78,7 @@ reason  = "controlled recovery to extract rows from a damaged page; tracked in O
 expires = "2026-09-01"
 ```
 
-## What pgbot cannot see
+## What queryshift cannot see
 
 - It reads the current setting, not **why** it is on — a deliberate, supervised
   recovery looks identical to an accident left in place.
