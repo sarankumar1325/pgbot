@@ -4,11 +4,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // auditPosture grades the pgaudit configuration when the extension is
-// installed. pgbot cannot read the audit trail itself (pgaudit writes to the
+// installed. queryshift cannot read the audit trail itself (pgaudit writes to the
 // server log, which is not reachable over SQL) — but every knob that decides
 // whether the trail exists and what leaks into it IS visible in pg_settings,
 // and the misconfigurations are the classic compliance foot-guns.

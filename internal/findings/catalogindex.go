@@ -24,12 +24,12 @@ var severityRank = map[string]int{"critical": 0, "warn": 1, "info": 2}
 // diffs it.
 func CatalogIndexMarkdown() []byte {
 	var b strings.Builder
-	b.WriteString("# pgbot findings\n\n")
-	b.WriteString("Every finding pgbot can emit, grouped by the kind of trouble it points at. Each\n")
-	b.WriteString("page explains what pgbot observed, why it matters, how to verify it yourself, how\n")
-	b.WriteString("to fix it, when to ignore it, and what pgbot cannot see.\n\n")
-	b.WriteString("Read a page offline with `pgbot explain-finding <id>`. Suppress or tune any\n")
-	b.WriteString("finding via [`.pgbot.toml`](../configuration.md).\n")
+	b.WriteString("# queryshift findings\n\n")
+	b.WriteString("Every finding queryshift can emit, grouped by the kind of trouble it points at. Each\n")
+	b.WriteString("page explains what queryshift observed, why it matters, how to verify it yourself, how\n")
+	b.WriteString("to fix it, when to ignore it, and what queryshift cannot see.\n\n")
+	b.WriteString("Read a page offline with `queryshift explain-finding <id>`. Suppress or tune any\n")
+	b.WriteString("finding via [`.queryshift.toml`](../configuration.md).\n")
 
 	for _, d := range dimensionOrder {
 		var ids []string

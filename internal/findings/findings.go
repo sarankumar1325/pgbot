@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // Thresholds for the rules, in one place so they read like the docs.
@@ -83,7 +83,7 @@ const (
 	slotRetainWarnBytes int64 = 512 << 20 // 512 MiB retained by an inactive slot
 	slotRetainCritBytes int64 = 8 << 30   // 8 GiB → serious disk-fill risk
 
-	// Config-tuning thresholds (the `pgbot tune` findings).
+	// Config-tuning thresholds (the `queryshift tune` findings).
 	tuneTempSpillBytesPerSec = 1 << 20 // 1 MiB/s of temp files → work_mem too small
 	tuneForcedCheckpointFrac = 0.30    // >30% of checkpoints forced by WAL → max_wal_size too small
 	tuneForcedCheckpointMin  = 10      // need enough checkpoints to judge the ratio
@@ -92,7 +92,7 @@ const (
 )
 
 // TuningIDs identifies the config-recommendation findings, surfaced together by
-// `pgbot tune`.
+// `queryshift tune`.
 var TuningIDs = map[string]bool{
 	"work_mem_low":                true,
 	"checkpoints_forced":          true,
@@ -108,7 +108,7 @@ var TuningIDs = map[string]bool{
 
 // knownIDs is every finding ID Compute can emit. It is the whitelist the config
 // layer validates [severity]/[[ignore]] rules against — an ID not here is a typo
-// (loud warning, never a hard error, so a config for a newer pgbot still loads).
+// (loud warning, never a hard error, so a config for a newer queryshift still loads).
 // TestKnownIDs_matchesCompute guards it against drift as findings are added.
 var knownIDs = map[string]bool{
 	"blocking_chains": true, "index_invalid": true, "unused_indexes": true,
@@ -140,11 +140,11 @@ var knownIDs = map[string]bool{
 	"suppression_expired": true, "suppression_unused": true,
 }
 
-// KnownID reports whether id is a finding pgbot can emit (config validation).
+// KnownID reports whether id is a finding queryshift can emit (config validation).
 func KnownID(id string) bool { return knownIDs[id] }
 
 // Tunables are the thresholds a user config may override ([thresholds] in
-// .pgbot.toml). Only these keys are wired — everything else stays a compiled-in
+// .queryshift.toml). Only these keys are wired — everything else stays a compiled-in
 // const (an unknown key in a config is a loud warning, not a silent no-op).
 // Applied BEFORE the finding is produced (B2-2 precedence rule 1). Raising a
 // warning threshold does not override a separate compiled-in critical threshold.
@@ -529,7 +529,7 @@ func unusedIndexes(c *model.Context, add func(model.Finding), tun Tunables) {
 	}
 	if replicationInUse(c) {
 		// NEVER optional: index stats are per-node; a primary cannot see reads a
-		// replica serves. The single most likely way pgbot causes an outage.
+		// replica serves. The single most likely way queryshift causes an outage.
 		caveats = append(caveats, "replication is active — these scan counts are from THIS node only; a replica may be using an index that looks unused here")
 	}
 	if partialSeen {
@@ -743,11 +743,11 @@ func seqScanHeavy(c *model.Context, add func(model.Finding)) {
 			"seq_scans ≫ index_scans on tables ≥ 50k rows"),
 		Confidence: 0.6,
 	}
-	// If hypopg is installed, pgbot can turn "add an index for the hot predicate"
-	// from advice into evidence: `pgbot advise` proposes indexes and only reports
+	// If hypopg is installed, queryshift can turn "add an index for the hot predicate"
+	// from advice into evidence: `queryshift advise` proposes indexes and only reports
 	// the ones the planner confirms it would use (B1).
 	if hasExtension(c, "hypopg") {
-		f.Caveats = append(f.Caveats, "run `pgbot advise` — with hypopg installed it validates candidate indexes against the planner (nothing is built) instead of guessing")
+		f.Caveats = append(f.Caveats, "run `queryshift advise` — with hypopg installed it validates candidate indexes against the planner (nothing is built) instead of guessing")
 	}
 	add(f)
 }
@@ -911,11 +911,11 @@ func staleStatistics(c *model.Context, add func(model.Finding)) {
 			Impact:      impact(model.DimLatency, 45, fmt.Sprintf("%d tables past 2× the analyze trigger", len(staleEv)), "n_mod_since_analyze vs threshold + scale × n_live_tup"),
 			Confidence:  0.7,
 		}
-		// Cross-reference, NOT causation: pgbot can't map a normalized query to its
+		// Cross-reference, NOT causation: queryshift can't map a normalized query to its
 		// tables, so it only notes the two travel together.
 		if querySlowdownPresent(c) {
 			f.Related = append(f.Related, "query_slowdown")
-			f.Caveats = append(f.Caveats, "a query regressed this run too (query_slowdown) — stale stats often cause plan flips, but pgbot can't confirm the slow query touches these tables; check whether it does")
+			f.Caveats = append(f.Caveats, "a query regressed this run too (query_slowdown) — stale stats often cause plan flips, but queryshift can't confirm the slow query touches these tables; check whether it does")
 		}
 		add(f)
 	}
@@ -1408,7 +1408,10 @@ func failoverReadiness(c *model.Context, add func(model.Finding), tun Tunables) 
 	// sync_rep_degraded — the important one. Not visible in any latency graph.
 	sc := settingParam(c, "synchronous_commit")
 	required := requiredSyncStandbys(settingParam(c, "synchronous_standby_names"))
-	if required > 0 && (sc == "on" || sc == "remote_write" || sc == "remote_apply") {
+	// Neon presents storage-service durability settings through PostgreSQL GUCs,
+	// but its compute nodes do not expose that storage quorum as pg_stat_replication
+	// rows. Comparing the two creates a guaranteed false alarm on healthy branches.
+	if c.Server.Provider != "neon" && required > 0 && (sc == "on" || sc == "remote_write" || sc == "remote_apply") {
 		got := 0
 		if c.Replication != nil {
 			for _, r := range c.Replication.Replicas {
@@ -1457,7 +1460,7 @@ func failoverReadiness(c *model.Context, add func(model.Finding), tun Tunables) 
 			add(model.Finding{
 				ID: "replica_lag_time", Severity: sev,
 				Title:       fmt.Sprintf("Replica replay lag %.0fs — the writes you'd lose on failover", worst),
-				Detail:      "A standby's replay is behind by this much wall-clock time — that IS the RPO: promote now and you lose that much committed work. Byte lag can't tell you this; it needs the write rate, which pgbot has from WAL sampling.",
+				Detail:      "A standby's replay is behind by this much wall-clock time — that IS the RPO: promote now and you lose that much committed work. Byte lag can't tell you this; it needs the write rate, which queryshift has from WAL sampling.",
 				Evidence:    cap10(ev),
 				Remediation: "Check the standby's apply rate (IO, CPU, recovery conflicts) and the network between primary and standby.",
 				Impact:      impact(model.DimRisk, math.Min(90, 40+worst/10), fmt.Sprintf("%.0fs behind", worst), "pg_stat_replication.replay_lag, gated on WAL generation"),
@@ -1573,7 +1576,9 @@ func checksumFindings(c *model.Context, add func(model.Finding)) {
 			),
 		})
 	}
-	if settingParam(c, "ignore_checksum_failure") == "on" {
+	// Neon's storage layer owns page integrity and can expose internal compatibility
+	// values that are not operator-controlled PostgreSQL durability switches.
+	if c.Server.Provider != "neon" && settingParam(c, "ignore_checksum_failure") == "on" {
 		add(model.Finding{
 			ID: "ignore_checksum_failure_on", Object: "setting:ignore_checksum_failure", Severity: model.SeverityCritical,
 			Title:       "ignore_checksum_failure is ON — corruption is being silenced",
@@ -1672,7 +1677,7 @@ func replicaIdentityMissing(c *model.Context, add func(model.Finding)) {
 		Remediation: "Give each table a primary key, or point the identity at an existing UNIQUE index on NOT NULL columns with ALTER TABLE … REPLICA IDENTITY USING INDEX <index>. Where neither fits, REPLICA IDENTITY FULL works, or drop the table from the publication.",
 		Caveats: []string{
 			"REPLICA IDENTITY FULL puts every column in the WAL record and makes the subscriber match rows without an index — correct, but costly on a large or busy table.",
-			"A partitioned table published with publish_via_partition_root replicates as the root; pgbot reports the relation the catalog names, which may be a partition.",
+			"A partitioned table published with publish_via_partition_root replicates as the root; queryshift reports the relation the catalog names, which may be a partition.",
 		},
 		Impact:     impact(model.DimRisk, 92, fmt.Sprintf("%d published table(s) cannot be updated", n), "relreplident with no usable identity on a table in an UPDATE/DELETE publication"),
 		Confidence: 1.0,
@@ -1681,7 +1686,7 @@ func replicaIdentityMissing(c *model.Context, add func(model.Finding)) {
 
 // walArchiving flags the WAL-archiving / PITR failure modes. On a detected
 // managed provider the backup mechanism is usually outside archive_command, so
-// every archiving finding is downgraded to info with wording that says pgbot
+// every archiving finding is downgraded to info with wording that says queryshift
 // cannot see the provider's backups (A15-0 rule 2). The archiver collector only
 // runs on a primary/unknown node, so this is inherently primary-scoped.
 func walArchiving(c *model.Context, add func(model.Finding)) {
@@ -1690,7 +1695,7 @@ func walArchiving(c *model.Context, add func(model.Finding)) {
 	}
 	a := c.Archiver
 	managed := cloudProvider(c)
-	managedNote := "pgbot can't see this managed provider's backup mechanism — snapshots/WAL are handled outside archive_command; verify backups in the provider console"
+	managedNote := "queryshift can't see this managed provider's backup mechanism — snapshots/WAL are handled outside archive_command; verify backups in the provider console"
 	sev := func(base string) string {
 		if managed {
 			return model.SeverityInfo
@@ -2019,7 +2024,7 @@ func querySlowdown(c *model.Context, add func(model.Finding)) {
 	add(model.Finding{
 		ID: "query_slowdown", Severity: model.SeverityWarn,
 		Title:       fmt.Sprintf("Query %s is %.1f× slower (%.0f → %.0f ms mean)", queryTagStr(worst.Subject), worstFactor, worst.Before, worst.After),
-		Detail:      "A query's mean execution time regressed sharply versus pgbot's baseline. Often a plan flip after the table grew, a dropped or invalidated index, or stale statistics.",
+		Detail:      "A query's mean execution time regressed sharply versus queryshift's baseline. Often a plan flip after the table grew, a dropped or invalidated index, or stale statistics.",
 		Remediation: "Check for a missing/invalid index and run ANALYZE on the table; compare the current plan against before.",
 		Impact: impact(model.DimLatency, math.Min(90, 30+worstFactor*10),
 			fmt.Sprintf("%.1f× slower", worstFactor),
@@ -2140,7 +2145,11 @@ func configSanity(c *model.Context, add func(model.Finding)) {
 	if c.Settings == nil {
 		return
 	}
-	if settingParam(c, "fsync") == "off" {
+	// Neon persists WAL and pages in its distributed storage service rather than
+	// the compute node's local filesystem. Its intentionally different GUC values
+	// are not evidence that the user's database is running without durability.
+	providerOwnsDurability := c.Server.Provider == "neon"
+	if !providerOwnsDurability && settingParam(c, "fsync") == "off" {
 		add(model.Finding{
 			ID: "fsync_off", Object: "setting:fsync", Severity: model.SeverityCritical,
 			Title:       "fsync is OFF — a crash can corrupt the database",
@@ -2150,7 +2159,7 @@ func configSanity(c *model.Context, add func(model.Finding)) {
 			Confidence:  1.0,
 		})
 	}
-	if settingParam(c, "full_page_writes") == "off" {
+	if !providerOwnsDurability && settingParam(c, "full_page_writes") == "off" {
 		add(model.Finding{
 			ID: "full_page_writes_off", Object: "setting:full_page_writes", Severity: model.SeverityCritical,
 			Title:       "full_page_writes is OFF — torn pages can corrupt on crash",
@@ -2214,7 +2223,7 @@ func configSanity(c *model.Context, add func(model.Finding)) {
 	}
 }
 
-// cloudProvider reports whether pgbot detected a managed (SSD-backed) platform.
+// cloudProvider reports whether queryshift detected a managed (SSD-backed) platform.
 func cloudProvider(c *model.Context) bool {
 	switch c.Server.Provider {
 	case "rds", "aurora", "cloudsql", "azure", "supabase", "neon":
@@ -2250,7 +2259,7 @@ func parseMemBytes(s string) (int64, bool) {
 }
 
 // ioTimingOff flags track_io_timing=off. With it off, blk_read_time/blk_write_time
-// are zero, so pgbot can't tell an IO-bound query from a CPU-bound one — which
+// are zero, so queryshift can't tell an IO-bound query from a CPU-bound one — which
 // degrades query analysis and the wait profile. Measured overhead is negligible
 // on modern hardware. Info severity.
 func ioTimingOff(c *model.Context, add func(model.Finding)) {
@@ -2260,7 +2269,7 @@ func ioTimingOff(c *model.Context, add func(model.Finding)) {
 	add(model.Finding{
 		ID: "io_timing_off", Object: "setting:track_io_timing", Severity: model.SeverityInfo,
 		Title:       "track_io_timing is off — no per-query IO time",
-		Detail:      "With track_io_timing off, block read/write times are zero, so pgbot (and pg_stat_statements) can't separate IO-bound queries from CPU-bound ones. That weakens query analysis and the wait profile.",
+		Detail:      "With track_io_timing off, block read/write times are zero, so queryshift (and pg_stat_statements) can't separate IO-bound queries from CPU-bound ones. That weakens query analysis and the wait profile.",
 		Remediation: "Set track_io_timing = on (a reload, no restart). Overhead is negligible on modern hardware — verify with pg_test_timing if unsure.",
 		Impact:      impact(model.DimThroughput, 15, "no IO timing", "track_io_timing setting"),
 		Confidence:  1.0,
@@ -2324,7 +2333,7 @@ func staleStatsWindow(c *model.Context, add func(model.Finding)) {
 		ID: "stale_stats_window", Severity: model.SeverityInfo,
 		Title:       fmt.Sprintf("Cumulative stats span %.0f days", *c.Window.StatsWindowDays),
 		Detail:      "Ratios like cache hit and cumulative query totals average over the whole window since the last stats reset. Over a very long window they hide recent regressions.",
-		Remediation: "Consider pg_stat_reset() to get a fresh baseline, or rely on pgbot's own deltas for recent change.",
+		Remediation: "Consider pg_stat_reset() to get a fresh baseline, or rely on queryshift's own deltas for recent change.",
 		Impact:      impact(model.DimCost, 12, fmt.Sprintf("%.0f-day window", *c.Window.StatsWindowDays), "stats_reset age"),
 		Confidence:  1.0,
 	})

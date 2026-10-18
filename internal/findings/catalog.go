@@ -3,7 +3,7 @@ package findings
 import (
 	"strings"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // Meta is the machine-readable metadata for one finding: the contract the
@@ -51,14 +51,14 @@ func ValidScope(s string) bool { return validScopes[s] }
 
 // metaScope covers the config-hygiene meta-findings, which have no catalog entry
 // (their docs live in configuration.md). They are never `schema` — a schema PR
-// check must not fire on the user's .pgbot.toml rot — so they're excluded from
+// check must not fire on the user's .queryshift.toml rot — so they're excluded from
 // --profile=schema like everything else non-schema.
 var metaScope = map[string]string{
 	"suppression_expired": ScopeInfra,
 	"suppression_unused":  ScopeInfra,
 }
 
-// Scope returns the scope for any finding id pgbot can emit (catalog or meta).
+// Scope returns the scope for any finding id queryshift can emit (catalog or meta).
 func Scope(id string) string {
 	if m, ok := catalog[id]; ok {
 		return m.Scope
