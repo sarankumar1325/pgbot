@@ -9,7 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/owenrumney/go-sarif/v2/sarif"
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // sampleContextForFormats is a fixed Context spanning the cases the machine
@@ -190,13 +190,13 @@ func TestPrometheus_golden(t *testing.T) {
 	golden(t, "sample.prom", buf.Bytes())
 	s := buf.String()
 	// every finding is a series; the suppressed one carries suppressed="true".
-	if !strings.Contains(s, `pgbot_finding{database="app",id="fsync_off"`) {
-		t.Error("missing pgbot_finding series")
+	if !strings.Contains(s, `queryshift_finding{database="app",id="fsync_off"`) {
+		t.Error("missing queryshift_finding series")
 	}
 	if !strings.Contains(s, `id="checksums_disabled"`) || !strings.Contains(s, `suppressed="true"`) {
 		t.Error("suppressed finding must be exported with suppressed=\"true\", not omitted")
 	}
-	if !strings.Contains(s, "pgbot_cache_hit_ratio{") {
+	if !strings.Contains(s, "queryshift_cache_hit_ratio{") {
 		t.Error("underlying gauges should be exported")
 	}
 }
@@ -276,8 +276,8 @@ func TestOneLineTrunc_runeSafe(t *testing.T) {
 }
 
 // The exit code under --fail-on-new passes preexisting findings (inspect.go),
-// so the metrics surface must let alerting do the same: pgbot_findings_total
-// must not count them, and pgbot_finding needs a preexisting label to
+// so the metrics surface must let alerting do the same: queryshift_findings_total
+// must not count them, and queryshift_finding needs a preexisting label to
 // distinguish (and silence) them — otherwise CI exits 0 while the exposition
 // pages on a "critical" that predates the change.
 func TestPrometheus_preexistingLabeledAndNotCounted(t *testing.T) {
@@ -291,8 +291,8 @@ func TestPrometheus_preexistingLabeledAndNotCounted(t *testing.T) {
 	if !strings.Contains(s, `id="fsync_off"`) || !strings.Contains(s, `preexisting="true"`) {
 		t.Errorf("the preexisting finding must stay visible with preexisting=\"true\":\n%s", s)
 	}
-	if !strings.Contains(s, `pgbot_findings_total{database="app",severity="critical"} 0`) {
-		t.Errorf("a preexisting critical must not count toward pgbot_findings_total (exit code passes it):\n%s", s)
+	if !strings.Contains(s, `queryshift_findings_total{database="app",severity="critical"} 0`) {
+		t.Errorf("a preexisting critical must not count toward queryshift_findings_total (exit code passes it):\n%s", s)
 	}
 }
 

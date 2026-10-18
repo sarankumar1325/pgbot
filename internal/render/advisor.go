@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/pgrundev/pgbot/internal/advisor"
+	"github.com/sarankumar1325/queryshift/internal/advisor"
 )
 
 // AdvisorInput is everything the index-advisor report needs.
@@ -22,7 +22,7 @@ type AdvisorInput struct {
 
 // AdvisorReport renders validated index recommendations. Every line makes the
 // "hypothetical, planner-confirmed, nothing built" guarantee explicit — a user
-// must never think pgbot changed their database.
+// must never think queryshift changed their database.
 func AdvisorReport(w io.Writer, in AdvisorInput) error {
 	st := styler{on: in.Color}
 	var b strings.Builder
@@ -36,7 +36,7 @@ func AdvisorReport(w io.Writer, in AdvisorInput) error {
 		fmt.Fprintln(&b, st.dim(fmt.Sprintf(
 			"considered %d slow quer(y/ies), planned %d, tested %d candidate(s) — the planner didn't confirm a cost win for any.",
 			in.Considered, in.Planned, in.Candidates)))
-		fmt.Fprintln(&b, st.dim("That's a good sign: the queries pgbot could plan are already served by existing indexes."))
+		fmt.Fprintln(&b, st.dim("That's a good sign: the queries queryshift could plan are already served by existing indexes."))
 		return writeTextReport(w, b.String())
 	}
 

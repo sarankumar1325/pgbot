@@ -6,7 +6,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 func f64(v float64) *float64 { return &v }
@@ -250,7 +250,7 @@ func TestGrouped_stripReplacesGoodAndSkipsSchema(t *testing.T) {
 	if strings.Contains(out, "GOOD") {
 		t.Error("GOOD block should be gone")
 	}
-	for _, w := range []string{"cache hit  [", "rollbacks  [", "Database health:", `pgbot ask "why is it slow?"`} {
+	for _, w := range []string{"cache hit  [", "rollbacks  [", "Database health:", `queryshift ask "why is it slow?"`} {
 		if !strings.Contains(out, w) {
 			t.Errorf("grouped view missing %q:\n%s", w, out)
 		}

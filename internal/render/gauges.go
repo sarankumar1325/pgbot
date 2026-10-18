@@ -5,14 +5,14 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // The gauge strip: four vital signs right under the header of the default
 // view, each a filled bar, a value and a one-word status. It reads in a
 // second and never contradicts the findings below it — every status word is
 // driven by the finding that grades the same signal, never by a threshold of
-// its own. A signal pgbot could not measure renders dim with "—" and says
+// its own. A signal queryshift could not measure renders dim with "—" and says
 // why, instead of showing an empty bar that looks like zero.
 //
 //	cache hit  [████████████████████]  99.2%     ok
@@ -137,7 +137,7 @@ func lockWaitGauge(c *model.Context) gauge {
 }
 
 // queryHex4 is the first four hex digits of a query_id — enough to find it in
-// `pgbot queries` / pg_stat_statements without eating the row.
+// `queryshift queries` / pg_stat_statements without eating the row.
 func queryHex4(id int64) string {
 	return fmt.Sprintf("%016x", uint64(id))[:4]
 }
@@ -207,9 +207,9 @@ type checkedSubsystem struct {
 	findings  []string
 }
 
-// buildChecked names, in a fixed order, the subsystems pgbot collected and
+// buildChecked names, in a fixed order, the subsystems queryshift collected and
 // found nothing to say about. Only collected subsystems are ever named — a
-// section pgbot did not gather cannot be "checked".
+// section queryshift did not gather cannot be "checked".
 func buildChecked(c *model.Context) []string {
 	fired := firedIDs(c)
 	deadlocksClean := c.Health != nil && c.Health.DeadlocksPerMin != nil && *c.Health.DeadlocksPerMin == 0

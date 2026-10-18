@@ -10,7 +10,7 @@ connected · app · postgres 17.10 · read-only · — window
 
 1 finding(s) · 1 warning
   ⚠ 1 unused index
-     docs: pgbot explain-finding unused_indexes
+     docs: queryshift explain-finding unused_indexes
 
 HEALTH  sampled
   TPS 1.2k   cache hit 99.4%   connections 24   rollbacks —

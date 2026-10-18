@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <testsuites tests="4" failures="2">
-  <testsuite name="pgbot" tests="4" failures="2">
+  <testsuite name="queryshift" tests="4" failures="2">
     <testcase name="fsync_off setting:fsync" classname="risk">
       <failure message="fsync is OFF — a crash can corrupt the database" type="critical">Set fsync = on.</failure>
     </testcase>

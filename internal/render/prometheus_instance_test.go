@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // Two members reporting the same database must not collapse into duplicate
@@ -24,9 +24,9 @@ func TestPrometheusAll_instanceLabels(t *testing.T) {
 	}
 	out := buf.String()
 	for _, want := range []string{
-		`pgbot_finding{database="app",instance="w",role="writer",id="table_bloat"`,
-		`pgbot_finding{database="app",instance="r1",role="reader",id="table_bloat"`,
-		`pgbot_findings_total{database="app",instance="w",role="writer",severity="warn"} 1`,
+		`queryshift_finding{database="app",instance="w",role="writer",id="table_bloat"`,
+		`queryshift_finding{database="app",instance="r1",role="reader",id="table_bloat"`,
+		`queryshift_findings_total{database="app",instance="w",role="writer",severity="warn"} 1`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
@@ -37,7 +37,7 @@ func TestPrometheusAll_instanceLabels(t *testing.T) {
 	if err := PrometheusAll(&buf, []*model.Context{mk("", "")}); err != nil {
 		t.Fatal(err)
 	}
-	if out := buf.String(); strings.Contains(out, "instance=") || !strings.Contains(out, `pgbot_finding{database="app",id="table_bloat"`) {
+	if out := buf.String(); strings.Contains(out, "instance=") || !strings.Contains(out, `queryshift_finding{database="app",id="table_bloat"`) {
 		t.Errorf("single-instance output changed:\n%s", out)
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 func f64(v float64) *float64 { return &v }

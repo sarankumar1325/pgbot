@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // JUnit writes findings as JUnit XML for Jenkins/GitLab test panes: each finding
@@ -18,7 +18,7 @@ import (
 // testcase rather than being omitted.
 func JUnit(w io.Writer, c *model.Context, failOn string) error {
 	threshold := junitRank(failOn)
-	suite := junitSuite{Name: "pgbot"}
+	suite := junitSuite{Name: "queryshift"}
 	for i := range c.Findings {
 		f := &c.Findings[i]
 		name := f.ID

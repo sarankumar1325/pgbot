@@ -11,8 +11,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/pgrundev/pgbot/internal/model"
+	"charm.land/lipgloss/v2"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // Options carries the presentation inputs the render layer shouldn't compute
@@ -43,7 +43,7 @@ func (s styler) c(code string, bold bool, text string) string {
 }
 
 // Styler exposes the render palette to sibling packages (e.g. the AI section in
-// `pgbot explain`) so they match the rest of the report.
+// `queryshift explain`) so they match the rest of the report.
 type Styler struct{ s styler }
 
 // NewStyler returns a palette; color is off when false (NO_COLOR / non-TTY).
@@ -104,7 +104,7 @@ func Terminal(w io.Writer, c *model.Context, opts Options) error {
 	// Config warnings up top, not buried: a typo'd rule that silently doesn't
 	// apply is the exact failure the config exists to prevent (B2-1).
 	if len(c.ConfigWarnings) > 0 {
-		fmt.Fprintln(&b, st.warn(fmt.Sprintf("! %d config warning(s) in .pgbot.toml:", len(c.ConfigWarnings))))
+		fmt.Fprintln(&b, st.warn(fmt.Sprintf("! %d config warning(s) in .queryshift.toml:", len(c.ConfigWarnings))))
 		for _, w := range c.ConfigWarnings {
 			fmt.Fprintf(&b, "  %s\n", st.dim(w))
 		}
@@ -269,14 +269,14 @@ func renderFindings(b *strings.Builder, st styler, fs []model.Finding, width int
 		}
 		renderSafetyGuards(b, st, f, width, "     ")
 		// Every finding references its catalogue page — offline via the subcommand.
-		fmt.Fprintf(b, "     %s\n", st.dim("docs: pgbot explain-finding "+f.ID))
+		fmt.Fprintf(b, "     %s\n", st.dim("docs: queryshift explain-finding "+f.ID))
 	}
 
 	// Suppressed section: dimmed, collapsed, reason inline (B2-2). Kept visible in
 	// --full so a muted finding is auditable, never silently gone.
 	if len(suppressed) > 0 {
 		fmt.Fprintln(b)
-		fmt.Fprintln(b, st.dim(fmt.Sprintf("SUPPRESSED (%d) — hidden by .pgbot.toml", len(suppressed))))
+		fmt.Fprintln(b, st.dim(fmt.Sprintf("SUPPRESSED (%d) — hidden by .queryshift.toml", len(suppressed))))
 		for _, f := range suppressed {
 			obj := f.Object
 			if obj == "" {

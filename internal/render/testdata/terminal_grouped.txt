@@ -10,5 +10,5 @@ Database health: 97/100
 WARNING
 ● 1 unused index
 
-Details: pgbot inspect --full   ·   Machine-readable: --json
-Ask it: pgbot ask "why is it slow?"
+Details: queryshift inspect --full   ·   Machine-readable: --json
+Ask it: queryshift ask "why is it slow?"

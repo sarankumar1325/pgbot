@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 func ptr(s string) *string { return &s }

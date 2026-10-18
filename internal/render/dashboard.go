@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // The default view is a graded, grouped read: a four-row gauge strip of vital
@@ -127,8 +127,8 @@ func renderGrouped(b *strings.Builder, st styler, c *model.Context, width int) {
 		fmt.Fprintln(b)
 	}
 
-	fmt.Fprintln(b, st.dim("Details: pgbot inspect --full   ·   Machine-readable: --json"))
-	fmt.Fprintln(b, st.dim(`Ask it: pgbot ask "why is it slow?"`))
+	fmt.Fprintln(b, st.dim("Details: queryshift inspect --full   ·   Machine-readable: --json"))
+	fmt.Fprintln(b, st.dim(`Ask it: queryshift ask "why is it slow?"`))
 }
 
 // renderSafetyGuards prints a finding's structured destructive-action guards

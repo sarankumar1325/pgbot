@@ -5,15 +5,15 @@
     {
       "tool": {
         "driver": {
-          "informationUri": "https://pgbot.dev",
-          "name": "pgbot",
+          "informationUri": "https://github.com/sarankumar1325/queryshift",
+          "name": "queryshift",
           "rules": [
             {
               "id": "fsync_off",
               "shortDescription": {
                 "text": "fsync is OFF — a crash can corrupt the database"
               },
-              "helpUri": "https://github.com/pgrundev/pgbot/blob/main/docs/findings/fsync_off.md",
+              "helpUri": "https://github.com/sarankumar1325/queryshift/blob/main/docs/findings/fsync_off.md",
               "properties": {
                 "defaultSeverity": "critical",
                 "dimension": "risk",
@@ -25,7 +25,7 @@
               "shortDescription": {
                 "text": "2 unused index(es)"
               },
-              "helpUri": "https://github.com/pgrundev/pgbot/blob/main/docs/findings/unused_indexes.md",
+              "helpUri": "https://github.com/sarankumar1325/queryshift/blob/main/docs/findings/unused_indexes.md",
               "properties": {
                 "defaultSeverity": "warn",
                 "dimension": "storage",
@@ -37,7 +37,7 @@
               "shortDescription": {
                 "text": "track_io_timing is off"
               },
-              "helpUri": "https://github.com/pgrundev/pgbot/blob/main/docs/findings/io_timing_off.md",
+              "helpUri": "https://github.com/sarankumar1325/queryshift/blob/main/docs/findings/io_timing_off.md",
               "properties": {
                 "defaultSeverity": "info",
                 "dimension": "throughput",
@@ -49,7 +49,7 @@
               "shortDescription": {
                 "text": "data checksums are off"
               },
-              "helpUri": "https://github.com/pgrundev/pgbot/blob/main/docs/findings/checksums_disabled.md",
+              "helpUri": "https://github.com/sarankumar1325/queryshift/blob/main/docs/findings/checksums_disabled.md",
               "properties": {
                 "defaultSeverity": "info",
                 "dimension": "risk",

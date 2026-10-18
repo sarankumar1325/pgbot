@@ -4,12 +4,12 @@ import (
 	"io"
 
 	"github.com/owenrumney/go-sarif/v2/sarif"
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // docsBaseURL is where a finding's catalogue page lives, used as the SARIF
 // helpUri so GitHub's Security tab links each result to its explanation.
-const docsBaseURL = "https://github.com/pgrundev/pgbot/blob/main/docs/findings/"
+const docsBaseURL = "https://github.com/sarankumar1325/queryshift/blob/main/docs/findings/"
 
 // SARIF writes the findings as SARIF 2.1.0 — the format GitHub's code-scanning
 // upload turns into Security-tab alerts. The catalogue built in B7 is exactly the
@@ -22,7 +22,7 @@ func SARIF(w io.Writer, c *model.Context) error {
 	if err != nil {
 		return err
 	}
-	run := sarif.NewRunWithInformationURI("pgbot", "https://pgbot.dev")
+	run := sarif.NewRunWithInformationURI("queryshift", "https://github.com/sarankumar1325/queryshift")
 
 	seenRule := map[string]bool{}
 	for i := range c.Findings {
@@ -64,7 +64,7 @@ func SARIF(w io.Writer, c *model.Context) error {
 		if f.Suppressed {
 			result.WithSuppression([]*sarif.Suppression{
 				sarif.NewSuppression("external").
-					WithJustifcation(strOr(f.SuppressionReason, "suppressed by .pgbot.toml")),
+					WithJustifcation(strOr(f.SuppressionReason, "suppressed by .queryshift.toml")),
 			})
 		}
 	}
@@ -73,7 +73,7 @@ func SARIF(w io.Writer, c *model.Context) error {
 	return report.PrettyWrite(w)
 }
 
-// sarifLevel maps pgbot severities to SARIF result levels.
+// sarifLevel maps queryshift severities to SARIF result levels.
 func sarifLevel(sev string) string {
 	switch sev {
 	case model.SeverityCritical:

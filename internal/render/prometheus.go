@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // Prometheus writes findings and key gauges for one database in the node_exporter
@@ -16,8 +16,8 @@ func Prometheus(w io.Writer, c *model.Context) error {
 
 // PrometheusAll writes a single, valid node_exporter textfile exposition covering
 // every database in contexts (one entry under --all-databases, N under it). It is
-// meant for a textfile collector driven by a cron or systemd timer — pgbot stays
-// agentless; there is no daemon. Every finding is one pgbot_finding series; a
+// meant for a textfile collector driven by a cron or systemd timer — queryshift stays
+// agentless; there is no daemon. Every finding is one queryshift_finding series; a
 // SUPPRESSED finding is exported with suppressed="true" rather than omitted, so a
 // metrics consumer sees what a config muted (B6).
 //
@@ -26,22 +26,22 @@ func Prometheus(w io.Writer, c *model.Context) error {
 // beneath — not one self-contained block per database, which would duplicate them
 // and make promtool (and the textfile collector) reject the file.
 func PrometheusAll(w io.Writer, contexts []*model.Context) error {
-	finding := &promFamily{name: "pgbot_finding", typ: "gauge",
-		help: `A pgbot finding (1 = present). suppressed="true" means muted by .pgbot.toml; destructive="true" means it carries a safety guard against a destructive action.`}
-	total := &promFamily{name: "pgbot_findings_total", typ: "gauge",
+	finding := &promFamily{name: "queryshift_finding", typ: "gauge",
+		help: `A queryshift finding (1 = present). suppressed="true" means muted by .queryshift.toml; destructive="true" means it carries a safety guard against a destructive action.`}
+	total := &promFamily{name: "queryshift_findings_total", typ: "gauge",
 		help: "Active (unsuppressed) findings by severity."}
 
 	// Gauges are pre-declared in a fixed order so output is deterministic; a family
 	// with no samples across any database is dropped (no empty header).
-	cacheHit := &promFamily{name: "pgbot_cache_hit_ratio", typ: "gauge", help: "Buffer cache hit ratio (0-1)."}
-	rollback := &promFamily{name: "pgbot_rollback_ratio", typ: "gauge", help: "Transaction rollback ratio (0-1)."}
-	tps := &promFamily{name: "pgbot_tps", typ: "gauge", help: "Transactions per second."}
-	xidAge := &promFamily{name: "pgbot_xid_age", typ: "gauge", help: "Oldest transaction-id age (toward the ~2.1B wraparound wall)."}
-	mxidAge := &promFamily{name: "pgbot_mxid_age", typ: "gauge", help: "Oldest multixact-id age."}
-	connUsed := &promFamily{name: "pgbot_connections_used", typ: "gauge", help: "Current connections."}
-	connMax := &promFamily{name: "pgbot_connections_max", typ: "gauge", help: "max_connections."}
-	walBytes := &promFamily{name: "pgbot_wal_dir_bytes", typ: "gauge", help: "pg_wal directory size in bytes."}
-	replicaLag := &promFamily{name: "pgbot_replica_lag_seconds", typ: "gauge", help: "Replica replay lag in seconds."}
+	cacheHit := &promFamily{name: "queryshift_cache_hit_ratio", typ: "gauge", help: "Buffer cache hit ratio (0-1)."}
+	rollback := &promFamily{name: "queryshift_rollback_ratio", typ: "gauge", help: "Transaction rollback ratio (0-1)."}
+	tps := &promFamily{name: "queryshift_tps", typ: "gauge", help: "Transactions per second."}
+	xidAge := &promFamily{name: "queryshift_xid_age", typ: "gauge", help: "Oldest transaction-id age (toward the ~2.1B wraparound wall)."}
+	mxidAge := &promFamily{name: "queryshift_mxid_age", typ: "gauge", help: "Oldest multixact-id age."}
+	connUsed := &promFamily{name: "queryshift_connections_used", typ: "gauge", help: "Current connections."}
+	connMax := &promFamily{name: "queryshift_connections_max", typ: "gauge", help: "max_connections."}
+	walBytes := &promFamily{name: "queryshift_wal_dir_bytes", typ: "gauge", help: "pg_wal directory size in bytes."}
+	replicaLag := &promFamily{name: "queryshift_replica_lag_seconds", typ: "gauge", help: "Replica replay lag in seconds."}
 
 	families := []*promFamily{
 		finding, total, cacheHit, rollback, tps, xidAge, mxidAge, connUsed, connMax, walBytes, replicaLag,
@@ -52,19 +52,19 @@ func PrometheusAll(w io.Writer, contexts []*model.Context) error {
 		counts := map[string]int{}
 		for _, f := range c.Findings {
 			// Preexisting findings (--fail-on-new) don't count: the exit code
-			// passes them (inspect.go), so an alert on pgbot_findings_total must
+			// passes them (inspect.go), so an alert on queryshift_findings_total must
 			// not page on a run CI declared clean. They stay visible as series
 			// with preexisting="true", the label alerting can silence by.
 			if !f.Suppressed && !f.Preexisting {
 				counts[f.Severity]++
 			}
-			finding.add(fmt.Sprintf("pgbot_finding{%s,id=\"%s\",severity=\"%s\",dimension=\"%s\",object=\"%s\",suppressed=\"%s\",preexisting=\"%s\",destructive=\"%s\"} 1",
+			finding.add(fmt.Sprintf("queryshift_finding{%s,id=\"%s\",severity=\"%s\",dimension=\"%s\",object=\"%s\",suppressed=\"%s\",preexisting=\"%s\",destructive=\"%s\"} 1",
 				db, esc(f.ID), esc(f.Severity), esc(f.Impact.Dimension), esc(f.Object), boolLabel(f.Suppressed),
 				boolLabel(f.Preexisting),
 				boolLabel(f.Safety != nil && len(f.Safety.BlockingCaveats) > 0)))
 		}
 		for _, sev := range []string{"critical", "warn", "info"} {
-			total.add(fmt.Sprintf("pgbot_findings_total{%s,severity=\"%s\"} %d", db, sev, counts[sev]))
+			total.add(fmt.Sprintf("queryshift_findings_total{%s,severity=\"%s\"} %d", db, sev, counts[sev]))
 		}
 
 		// Underlying gauges — the numbers behind the findings, so alerts can trigger
@@ -92,7 +92,7 @@ func PrometheusAll(w io.Writer, contexts []*model.Context) error {
 					if name == "" {
 						name = rep.ClientAddr
 					}
-					replicaLag.add(fmt.Sprintf("pgbot_replica_lag_seconds{%s,replica=\"%s\"} %g", db, esc(name), *rep.ReplayLagSec))
+					replicaLag.add(fmt.Sprintf("queryshift_replica_lag_seconds{%s,replica=\"%s\"} %g", db, esc(name), *rep.ReplayLagSec))
 				}
 			}
 		}

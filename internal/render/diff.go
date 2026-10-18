@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
-// DiffInput is everything the `pgbot diff` report needs.
+// DiffInput is everything the `queryshift diff` report needs.
 type DiffInput struct {
 	Color       bool
 	Database    string
