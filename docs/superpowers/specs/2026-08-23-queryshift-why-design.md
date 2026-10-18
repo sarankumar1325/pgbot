@@ -1,14 +1,14 @@
-# pgbot why — deterministic root-cause chains from baseline history
+# queryshift why — deterministic root-cause chains from baseline history
 
 Approved in-chat 2026-08-23. This is the flagship correlation feature the
-README's roadmap promises ("Deeper correlation (`pgbot why`) is still future
+README's roadmap promises ("Deeper correlation (`queryshift why`) is still future
 work"): *"orders queries 3.2× slower → because seq scans jumped → after the
 table grew 18%"* — computed in Go from the local baseline store, never
 AI-generated.
 
 ## Problem
 
-pgbot already remembers (every inspect saves a full snapshot; schema/config
+queryshift already remembers (every inspect saves a full snapshot; schema/config
 events are derived and persisted) and already diffs (`internal/diff`, two
 snapshots). What it cannot do is answer *why*: connect a regression to the
 mechanism behind it and the antecedent that set the mechanism off, across N
@@ -63,7 +63,7 @@ narrate this feature's output later, unchanged).
 - `store.LoadRange(fingerprint string, since time.Time) ([]Snapshot, error)` —
   the only store addition (read-only). Events come from the existing
   `RecentEvents`.
-- `cmd/pgbot/why.go` — `pgbot why [target] [connection-string]`:
+- `cmd/queryshift/why.go` — `queryshift why [target] [connection-string]`:
   - No target: analyze every detected symptom, worst first (cap 3).
   - Target: a query id (`why 12345`) or a table name (`why orders`) focuses
     the analysis.
