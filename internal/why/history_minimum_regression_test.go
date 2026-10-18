@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 func TestAnalyze_HistoryMinimumForIntervalShift(t *testing.T) {
@@ -32,7 +32,7 @@ func TestAnalyze_HistoryMinimumForIntervalShift(t *testing.T) {
 			t.Fatalf("three snapshots produced chains: %+v", report.Chains)
 		}
 		notes := strings.Join(report.Notes, " ")
-		if !strings.Contains(notes, "at least 4") || !strings.Contains(notes, "pgbot inspect") {
+		if !strings.Contains(notes, "at least 4") || !strings.Contains(notes, "queryshift inspect") {
 			t.Fatalf("notes = %q, want the four-snapshot guidance", notes)
 		}
 	})

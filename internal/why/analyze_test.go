@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // history builds hourly samples from per-snapshot builders.
@@ -174,8 +174,8 @@ func TestAnalyze_insufficientHistory(t *testing.T) {
 	if len(r.Chains) != 0 {
 		t.Errorf("2 snapshots cannot produce chains: %+v", r.Chains)
 	}
-	if len(r.Notes) == 0 || !strings.Contains(strings.Join(r.Notes, " "), "pgbot inspect") {
-		t.Errorf("the report must tell the user to run pgbot inspect and return: %v", r.Notes)
+	if len(r.Notes) == 0 || !strings.Contains(strings.Join(r.Notes, " "), "queryshift inspect") {
+		t.Errorf("the report must tell the user to run queryshift inspect and return: %v", r.Notes)
 	}
 }
 

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 func study(aas float64, buckets ...model.WaitBucket) *model.WaitStudy {
@@ -92,7 +92,7 @@ func TestClassifyLiveCauses(t *testing.T) {
 	}
 	// One query owning the IO earns the advise POINTER (not a recommendation).
 	s.Profile.ByQuery = []model.QueryWaits{{QueryID: 7, Share: 0.6, IOShare: 0.9, SampleText: "SELECT …"}}
-	if r := ClassifyLive(s, nil); !strings.Contains(r.NextCheck, "pgbot advise") {
+	if r := ClassifyLive(s, nil); !strings.Contains(r.NextCheck, "queryshift advise") {
 		t.Errorf("dominant IO query should point at advise: %+v", r)
 	}
 
@@ -140,7 +140,7 @@ func TestClassifyLiveHistory(t *testing.T) {
 
 // The source label is always present — future pg_wait_sampling mode changes it.
 func TestClassifyLiveSource(t *testing.T) {
-	if r := ClassifyLive(study(3, bucket("CPU", 60, 60)), nil); r.Source != "pgbot-ash" {
+	if r := ClassifyLive(study(3, bucket("CPU", 60, 60)), nil); r.Source != "queryshift-ash" {
 		t.Errorf("source label missing: %+v", r)
 	}
 }

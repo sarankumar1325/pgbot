@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // Sample is one stored snapshot: its collection time and decoded context.
@@ -40,7 +40,7 @@ type Chain struct {
 	impact     float64 // sort key: how much this symptom matters
 }
 
-// Report is what `pgbot why` renders. Its JSON shape is versioned separately
+// Report is what `queryshift why` renders. Its JSON shape is versioned separately
 // from the Context contract.
 type Report struct {
 	SchemaVersion string    `json:"why_schema_version"`
@@ -81,7 +81,7 @@ func Analyze(samples []Sample, events []model.Event, opts Options) Report {
 	}
 	if len(samples) < MinSnapshots {
 		r.Notes = append(r.Notes, fmt.Sprintf(
-			"only %d snapshot(s) in the window — pgbot needs at least %d to tell a change from a baseline. Run `pgbot inspect` a few times as the workload runs (each run stores one), then come back.",
+			"only %d snapshot(s) in the window — queryshift needs at least %d to tell a change from a baseline. Run `queryshift inspect` a few times as the workload runs (each run stores one), then come back.",
 			len(samples), MinSnapshots))
 		return r
 	}

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
-// LiveReport is the diagnosis `pgbot why --duration` derives from one live
+// LiveReport is the diagnosis `queryshift why --duration` derives from one live
 // wait study. Cause selection is FIRST-MATCH deterministic over named
 // thresholds; the gates (insufficient evidence, negligible activity) outrank
 // every diagnosis, because refusing to conclude beats a confident guess.
@@ -18,7 +18,7 @@ type LiveReport struct {
 	Evidence    []string         `json:"evidence,omitempty"`
 	NextCheck   string           `json:"next_check,omitempty"`
 	HistoryNote string           `json:"history_note,omitempty"`
-	Source      string           `json:"source"` // "pgbot-ash"; pg_wait_sampling later
+	Source      string           `json:"source"` // "queryshift-ash"; pg_wait_sampling later
 	Study       *model.WaitStudy `json:"study,omitempty"`
 }
 
@@ -49,7 +49,7 @@ const (
 // cause. Shares quoted are always sampled; the only exact numbers are ages
 // read from the server.
 func ClassifyLive(s *model.WaitStudy, hist *HistShares) *LiveReport {
-	r := &LiveReport{Source: "pgbot-ash", Study: s}
+	r := &LiveReport{Source: "queryshift-ash", Study: s}
 
 	// Gates first.
 	coverage := 1.0
@@ -116,7 +116,7 @@ func ClassifyLive(s *model.WaitStudy, hist *HistShares) *LiveReport {
 			fmt.Sprintf("%.0f%% of sampled time reading or writing data — IO wait alone does not identify a cause like an absent index.", share["IO"]*100))
 		for _, q := range s.Profile.ByQuery {
 			if q.Share >= ioQueryShareBar && q.IOShare >= ioQueryIOBar {
-				r.NextCheck = "one query dominates the IO samples — `pgbot advise` can check indexes with planner validation"
+				r.NextCheck = "one query dominates the IO samples — `queryshift advise` can check indexes with planner validation"
 				break
 			}
 		}
