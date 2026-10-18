@@ -1,11 +1,11 @@
-# pgbot
+# QueryShift CLI
 
-**In-database observability for PostgreSQL.** One static binary connects
-read-only, reads Postgres's own statistics views, and prints a findings-first
-health report.
+**Read-only PostgreSQL evidence for autonomous SQL modernization.** The static
+binary exposes schema, plans, health, indexes, and workload findings without
+changing the target database.
 
 ```bash
-npx @pgbot/cli inspect "postgres://pgbot_ro@host:5432/db"
+npx @queryshift/cli inspect "postgres://queryshift_ro@host:5432/db"
 ```
 
 No prior install. `npx` downloads the wrapper and the prebuilt binary for your
@@ -19,20 +19,20 @@ All four work, and each downloads only your platform's binary:
 
 | | no install | project | global |
 |---|---|---|---|
-| npm | `npx @pgbot/cli` | `npm i @pgbot/cli` | `npm i -g @pgbot/cli` |
-| pnpm | `pnpm dlx @pgbot/cli` | `pnpm add @pgbot/cli` | `pnpm add -g @pgbot/cli` |
-| Yarn | `yarn dlx @pgbot/cli` | `yarn add @pgbot/cli` | `yarn global add @pgbot/cli` |
-| bun | `bunx @pgbot/cli` | `bun add @pgbot/cli` | `bun add -g @pgbot/cli` |
+| npm | `npx @queryshift/cli` | `npm i @queryshift/cli` | `npm i -g @queryshift/cli` |
+| pnpm | `pnpm dlx @queryshift/cli` | `pnpm add @queryshift/cli` | `pnpm add -g @queryshift/cli` |
+| Yarn | `yarn dlx @queryshift/cli` | `yarn add @queryshift/cli` | `yarn global add @queryshift/cli` |
+| bun | `bunx @queryshift/cli` | `bun add @queryshift/cli` | `bun add -g @queryshift/cli` |
 
 The wrapper locates the binary at run time and this package ships **no install
 scripts**, so it works wherever lifecycle scripts are disabled — `npm ci
 --ignore-scripts`, pnpm's blocked-by-default builds, bun. Two Yarn notes:
 `yarn dlx` is Berry-only (Classic uses `yarn global add`), and under Berry's
 default Plug'n'Play linker there is no `node_modules/.bin`, so invoke it as
-`yarn pgbot`.
+`yarn queryshift`.
 
-The package is **scoped** — the bare name `pgbot` is blocked by npm's
-package-name-similarity rule, so `npx pgbot` returns `E404`. Use `@pgbot/cli`.
+The package is **scoped** — the bare name `queryshift` is blocked by npm's
+package-name-similarity rule, so `npx queryshift` returns `E404`. Use `@queryshift/cli`.
 
 ## What npm verifies (and what it doesn't)
 
@@ -45,7 +45,7 @@ For the verified path, install the binary with the script and require the
 signature:
 
 ```bash
-PGBOT_REQUIRE_SIGNATURE=1 curl -fsSL https://pgbot.dev/install | sh
+QUERYSHIFT_REQUIRE_SIGNATURE=1 curl -fsSL https://raw.githubusercontent.com/sarankumar1325/queryshift/main/install.sh | sh
 ```
 
-Full documentation: <https://github.com/pgrundev/pgbot#readme>
+Full documentation: <https://github.com/sarankumar1325/queryshift#readme>

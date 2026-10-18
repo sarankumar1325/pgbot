@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Assemble the npm publish tree from goreleaser's build output. Reads
-// dist/artifacts.json, copies each Binary into its own @pgbot/<platform> package,
+// dist/artifacts.json, copies each Binary into its own @queryshift/<platform> package,
 // and writes the wrapper with matching versions and pinned optionalDependencies.
 // No network and no publish — that is the release workflow's job. The Go binaries
 // are used as-is; this is packaging only.
@@ -15,9 +15,9 @@ import { fileURLToPath } from 'node:url';
 const npmDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(npmDir, '..');
 
-const version = (process.env.PGBOT_VERSION || process.argv[2] || '').replace(/^v/, '');
+const version = (process.env.QUERYSHIFT_VERSION || process.argv[2] || '').replace(/^v/, '');
 if (!version) {
-  console.error('usage: build.mjs <version>   (or set PGBOT_VERSION)');
+  console.error('usage: build.mjs <version>   (or set QUERYSHIFT_VERSION)');
   process.exit(2);
 }
 const dist = process.env.DIST || path.join(root, 'dist');
@@ -45,8 +45,8 @@ for (const b of bins) {
     continue;
   }
   const key = `${os}-${cpu}`;
-  const exe = os === 'win32' ? 'pgbot.exe' : 'pgbot';
-  const pkgDir = path.join(out, '@pgbot', key);
+  const exe = os === 'win32' ? 'queryshift.exe' : 'queryshift';
+  const pkgDir = path.join(out, '@queryshift', key);
   fs.mkdirSync(path.join(pkgDir, 'bin'), { recursive: true });
 
   const src = path.isAbsolute(b.path) ? b.path : path.join(root, b.path);
@@ -55,23 +55,23 @@ for (const b of bins) {
   if (os !== 'win32') fs.chmodSync(dst, 0o755);
 
   writeJSON(path.join(pkgDir, 'package.json'), {
-    name: `@pgbot/${key}`,
+    name: `@queryshift/${key}`,
     version,
-    description: `pgbot prebuilt binary for ${key}`,
+    description: `queryshift prebuilt binary for ${key}`,
     os: [os],
     cpu: [cpu],
     files: ['bin/'],
     license: 'Apache-2.0',
-    repository: { type: 'git', url: 'git+https://github.com/pgrundev/pgbot.git' },
+    repository: { type: 'git', url: 'git+https://github.com/sarankumar1325/queryshift.git' },
   });
   written.push(key);
 }
 
 // The wrapper: copy the shim + README, inject the release version everywhere.
-const wrapSrc = path.join(npmDir, 'pgbot');
-const wrapOut = path.join(out, 'pgbot');
+const wrapSrc = path.join(npmDir, 'queryshift');
+const wrapOut = path.join(out, 'queryshift');
 fs.mkdirSync(path.join(wrapOut, 'bin'), { recursive: true });
-fs.copyFileSync(path.join(wrapSrc, 'bin', 'pgbot.js'), path.join(wrapOut, 'bin', 'pgbot.js'));
+fs.copyFileSync(path.join(wrapSrc, 'bin', 'queryshift.js'), path.join(wrapOut, 'bin', 'queryshift.js'));
 if (fs.existsSync(path.join(wrapSrc, 'README.md'))) {
   fs.copyFileSync(path.join(wrapSrc, 'README.md'), path.join(wrapOut, 'README.md'));
 }
@@ -82,7 +82,7 @@ for (const dep of Object.keys(wrapPkg.optionalDependencies || {})) {
 }
 writeJSON(path.join(wrapOut, 'package.json'), wrapPkg);
 
-console.log(`assembled npm tree ${version}: pgbot + ${written.map((k) => '@pgbot/' + k).join(', ')}`);
+console.log(`assembled npm tree ${version}: queryshift + ${written.map((k) => '@queryshift/' + k).join(', ')}`);
 
 function writeJSON(p, obj) {
   fs.writeFileSync(p, JSON.stringify(obj, null, 2) + '\n');

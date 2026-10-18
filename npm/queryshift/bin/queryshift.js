@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 
-// pgbot npm wrapper — locates the prebuilt Go binary for this platform (shipped
-// as an optionalDependency: one @pgbot/<platform>-<arch> package per target that
+// queryshift npm wrapper — locates the prebuilt Go binary for this platform (shipped
+// as an optionalDependency: one @queryshift/<platform>-<arch> package per target that
 // npm installs only when its os/cpu match) and execs it. It passes argv, stdio,
 // signals, and the exit code through verbatim. ALL behaviour lives in the Go
 // binary; this file stays pure plumbing so nothing here needs its own tests
@@ -15,10 +15,10 @@ const path = require('path');
 // pkgFor / exeName are the whole "locating" decision, factored out so the mapping
 // (including the least-exercised win32-arm64 path) is unit-testable.
 function pkgFor(platform, arch) {
-  return `@pgbot/${platform}-${arch}`;
+  return `@queryshift/${platform}-${arch}`;
 }
 function exeName(platform) {
-  return platform === 'win32' ? 'pgbot.exe' : 'pgbot';
+  return platform === 'win32' ? 'queryshift.exe' : 'queryshift';
 }
 
 function resolveBinary(platform, arch) {
@@ -38,14 +38,14 @@ function main() {
   const binPath = resolveBinary(platform, arch);
   if (!binPath || !fs.existsSync(binPath)) {
     process.stderr.write(
-      `pgbot: no prebuilt binary for your platform (${platform}-${arch}).\n` +
-        `pgbot ships binaries for linux, darwin, and win32 on x64 and arm64.\n` +
+      `queryshift: no prebuilt binary for your platform (${platform}-${arch}).\n` +
+        `queryshift ships binaries for linux, darwin, and win32 on x64 and arm64.\n` +
         `If you ran npx moments after a release, npm may have cached an install\n` +
         `made before your platform's package propagated — retry with a fresh\n` +
-        `cache: npx --cache "$(mktemp -d)" -y @pgbot/cli --version\n` +
-        `Install another way: https://github.com/pgrundev/pgbot#install\n`
+        `cache: npx --cache "$(mktemp -d)" -y @queryshift/cli --version\n` +
+        `Install another way: https://github.com/sarankumar1325/queryshift#install\n`
     );
-    process.exit(64); // usage/environment error, per pgbot's exit-code contract
+    process.exit(64); // usage/environment error, per queryshift's exit-code contract
   }
 
   // npm does not reliably preserve the executable bit through packing; restore it
@@ -76,7 +76,7 @@ function main() {
   }
 
   child.on('error', (err) => {
-    process.stderr.write(`pgbot: failed to launch ${binPath}: ${err.message}\n`);
+    process.stderr.write(`queryshift: failed to launch ${binPath}: ${err.message}\n`);
     process.exit(3); // execution failure, per the contract
   });
 

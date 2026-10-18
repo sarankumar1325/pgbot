@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end packaging proof for THIS platform (DoD 10): build the real Go binary,
 # assemble the npm tree with build.mjs, `npm pack` the wrapper + this platform's
-# package, install the tarballs with --ignore-scripts, and run `pgbot --version`
+# package, install the tarballs with --ignore-scripts, and run `queryshift --version`
 # through the installed wrapper. Proves the install needs no lifecycle scripts and
 # that the wrapper resolves + execs the binary. No registry, no publish.
 #
@@ -24,12 +24,12 @@ done
 
 goos="$(cd "$root" && go env GOOS)"
 goarch="$(cd "$root" && go env GOARCH)"
-exe="pgbot"
-[ "$goos" = "windows" ] && exe="pgbot.exe"
+exe="queryshift"
+[ "$goos" = "windows" ] && exe="queryshift.exe"
 
 echo "→ building real binary ($goos/$goarch)"
 mkdir -p "$work/dist"
-( cd "$root" && CGO_ENABLED=0 go build -o "$work/dist/$exe" ./cmd/pgbot )
+( cd "$root" && CGO_ENABLED=0 go build -o "$work/dist/$exe" ./cmd/queryshift )
 cat > "$work/dist/artifacts.json" <<JSON
 [{"type":"Binary","path":"$work/dist/$exe","goos":"$goos","goarch":"$goarch"}]
 JSON
@@ -37,11 +37,11 @@ JSON
 echo "→ assembling npm tree"
 DIST="$work/dist" OUT="$work/staging" node "$root/npm/build.mjs" "$version"
 
-platkey="$(ls "$work/staging/@pgbot")"
+platkey="$(ls "$work/staging/@queryshift")"
 echo "→ npm pack ($platkey + wrapper)"
 mkdir -p "$work/tarballs"
-( cd "$work/staging/@pgbot/$platkey" && npm pack --pack-destination "$work/tarballs" >/dev/null 2>&1 )
-( cd "$work/staging/pgbot" && npm pack --pack-destination "$work/tarballs" >/dev/null 2>&1 )
+( cd "$work/staging/@queryshift/$platkey" && npm pack --pack-destination "$work/tarballs" >/dev/null 2>&1 )
+( cd "$work/staging/queryshift" && npm pack --pack-destination "$work/tarballs" >/dev/null 2>&1 )
 
 # Install both tarballs into a fresh project with lifecycle scripts disabled. The
 # wrapper's other-platform optionalDeps are skipped (not published) — that's the
@@ -49,11 +49,11 @@ mkdir -p "$work/tarballs"
 install_with() {
   local pm="$1" proj="$work/proj-$1"
   mkdir -p "$proj"
-  printf '{"name":"pgbot-smoke","private":true}\n' > "$proj/package.json"
+  printf '{"name":"queryshift-smoke","private":true}\n' > "$proj/package.json"
   case "$pm" in
     npm) ( cd "$proj" && npm install --ignore-scripts --no-save --no-audit --no-fund \
-             "$work/tarballs"/pgbot-*.tgz >/dev/null 2>&1 ) ;;
-    bun) ( cd "$proj" && bun add --ignore-scripts "$work/tarballs"/pgbot-*.tgz >/dev/null 2>&1 ) ;;
+             "$work/tarballs"/queryshift-*.tgz >/dev/null 2>&1 ) ;;
+    bun) ( cd "$proj" && bun add --ignore-scripts "$work/tarballs"/queryshift-*.tgz >/dev/null 2>&1 ) ;;
     *)   echo "✗ no install recipe for package manager '$pm'" >&2; exit 1 ;;
   esac
   echo "$proj"
@@ -63,11 +63,11 @@ for pm in "$@"; do
   echo "→ $pm install with --ignore-scripts"
   proj="$(install_with "$pm")"
 
-  echo "→ run pgbot --version through the $pm-installed wrapper"
-  out="$("$proj/node_modules/.bin/pgbot" --version)"
+  echo "→ run queryshift --version through the $pm-installed wrapper"
+  out="$("$proj/node_modules/.bin/queryshift" --version)"
   echo "   $out"
   case "$out" in
-    "pgbot version"*) echo "✓ pack-smoke OK ($platkey, $pm, --ignore-scripts)";;
+    "queryshift version"*) echo "✓ pack-smoke OK ($platkey, $pm, --ignore-scripts)";;
     *) echo "✗ unexpected --version output via $pm: $out"; exit 1;;
   esac
 
@@ -75,10 +75,10 @@ for pm in "$@"; do
   # runtime, whose node-API compatibility (spawn, signals) can break separately.
   if [ "$pm" = bun ]; then
     echo "→ run the wrapper under bun's runtime (--bun)"
-    out="$(bun --bun "$proj/node_modules/@pgbot/cli/bin/pgbot.js" --version)"
+    out="$(bun --bun "$proj/node_modules/@queryshift/cli/bin/queryshift.js" --version)"
     echo "   $out"
     case "$out" in
-      "pgbot version"*) echo "✓ wrapper OK under bun runtime";;
+      "queryshift version"*) echo "✓ wrapper OK under bun runtime";;
       *) echo "✗ unexpected --version output under bun runtime: $out"; exit 1;;
     esac
   fi

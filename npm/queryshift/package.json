@@ -1,0 +1,40 @@
+{
+  "name": "@queryshift/cli",
+  "version": "0.0.0-dev",
+  "description": "QueryShift read-only PostgreSQL evidence engine for autonomous SQL modernization.",
+  "keywords": [
+    "postgres",
+    "postgresql",
+    "migration",
+    "modernization",
+    "diagnostics",
+    "dba",
+    "monitoring",
+    "performance",
+    "cli"
+  ],
+  "homepage": "https://github.com/sarankumar1325/queryshift#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sarankumar1325/queryshift.git"
+  },
+  "license": "Apache-2.0",
+  "bin": {
+    "queryshift": "bin/queryshift.js"
+  },
+  "files": [
+    "bin/queryshift.js",
+    "README.md"
+  ],
+  "optionalDependencies": {
+    "@queryshift/linux-x64": "0.0.0-dev",
+    "@queryshift/linux-arm64": "0.0.0-dev",
+    "@queryshift/darwin-x64": "0.0.0-dev",
+    "@queryshift/darwin-arm64": "0.0.0-dev",
+    "@queryshift/win32-x64": "0.0.0-dev",
+    "@queryshift/win32-arm64": "0.0.0-dev"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}

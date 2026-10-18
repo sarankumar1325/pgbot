@@ -11,21 +11,21 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const shim = path.join(here, '..', 'pgbot', 'bin', 'pgbot.js');
-const wrapperPkg = JSON.parse(fs.readFileSync(path.join(here, '..', 'pgbot', 'package.json'), 'utf8'));
+const shim = path.join(here, '..', 'queryshift', 'bin', 'queryshift.js');
+const wrapperPkg = JSON.parse(fs.readFileSync(path.join(here, '..', 'queryshift', 'package.json'), 'utf8'));
 
 // pkgFor / exeName are pure and exported — assert the mapping directly, including
 // the least-exercised win32-arm64 path (DoD: verify it resolves correctly).
 const mod = await import(pathToFileURL(shim).href);
 test('platform → package/exe mapping (incl. win32-arm64)', () => {
-  assert.equal(mod.pkgFor('linux', 'x64'), '@pgbot/linux-x64');
-  assert.equal(mod.pkgFor('darwin', 'arm64'), '@pgbot/darwin-arm64');
-  assert.equal(mod.pkgFor('win32', 'arm64'), '@pgbot/win32-arm64');
-  assert.equal(mod.exeName('win32'), 'pgbot.exe');
-  assert.equal(mod.exeName('linux'), 'pgbot');
+  assert.equal(mod.pkgFor('linux', 'x64'), '@queryshift/linux-x64');
+  assert.equal(mod.pkgFor('darwin', 'arm64'), '@queryshift/darwin-arm64');
+  assert.equal(mod.pkgFor('win32', 'arm64'), '@queryshift/win32-arm64');
+  assert.equal(mod.exeName('win32'), 'queryshift.exe');
+  assert.equal(mod.exeName('linux'), 'queryshift');
   // The wrapper must ship an optionalDependency for every platform it can map to.
   for (const p of ['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64', 'win32-x64', 'win32-arm64']) {
-    assert.ok(wrapperPkg.optionalDependencies[`@pgbot/${p}`], `missing optionalDependency @pgbot/${p}`);
+    assert.ok(wrapperPkg.optionalDependencies[`@queryshift/${p}`], `missing optionalDependency @queryshift/${p}`);
   }
 });
 
@@ -38,24 +38,24 @@ test('no install scripts anywhere (npm ci --ignore-scripts is a no-op)', () => {
 const posix = process.platform !== 'win32';
 
 // stageFakeBinary builds a node_modules layout the shim can resolve: a fake
-// @pgbot/<thisPlatform> whose bin/pgbot is a shell script we control, plus a copy
+// @queryshift/<thisPlatform> whose bin/queryshift is a shell script we control, plus a copy
 // of the real wrapper. Returns the dir to run the wrapper from.
 function stageFakeBinary(script) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pgbot-wrap-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'queryshift-wrap-'));
   const key = `${process.platform}-${process.arch}`;
-  const platDir = path.join(dir, 'node_modules', '@pgbot', key, 'bin');
+  const platDir = path.join(dir, 'node_modules', '@queryshift', key, 'bin');
   fs.mkdirSync(platDir, { recursive: true });
-  fs.writeFileSync(path.join(platDir, 'pgbot'), script, { mode: 0o755 });
+  fs.writeFileSync(path.join(platDir, 'queryshift'), script, { mode: 0o755 });
   fs.writeFileSync(
-    path.join(dir, 'node_modules', '@pgbot', key, 'package.json'),
-    JSON.stringify({ name: `@pgbot/${key}`, version: '0.0.0', os: [process.platform], cpu: [process.arch] })
+    path.join(dir, 'node_modules', '@queryshift', key, 'package.json'),
+    JSON.stringify({ name: `@queryshift/${key}`, version: '0.0.0', os: [process.platform], cpu: [process.arch] })
   );
-  const wrapDir = path.join(dir, 'node_modules', 'pgbot', 'bin');
+  const wrapDir = path.join(dir, 'node_modules', 'queryshift', 'bin');
   fs.mkdirSync(wrapDir, { recursive: true });
-  fs.copyFileSync(shim, path.join(wrapDir, 'pgbot.js'));
+  fs.copyFileSync(shim, path.join(wrapDir, 'queryshift.js'));
   fs.writeFileSync(
-    path.join(dir, 'node_modules', 'pgbot', 'package.json'),
-    JSON.stringify({ name: 'pgbot', version: '0.0.0', bin: { pgbot: 'bin/pgbot.js' } })
+    path.join(dir, 'node_modules', 'queryshift', 'package.json'),
+    JSON.stringify({ name: 'queryshift', version: '0.0.0', bin: { queryshift: 'bin/queryshift.js' } })
   );
   return dir;
 }
@@ -134,10 +134,10 @@ function registerCleanup(t, wrapper, getBinaryPID) {
 }
 
 test('exit code and argv pass through verbatim (2 = critical)', { skip: !posix }, () => {
-  const dir = stageFakeBinary('#!/bin/sh\nprintf "args:%s\\n" "$*"\nexit ${PGBOT_FAKE_EXIT:-0}\n');
-  const wrapper = path.join(dir, 'node_modules', 'pgbot', 'bin', 'pgbot.js');
+  const dir = stageFakeBinary('#!/bin/sh\nprintf "args:%s\\n" "$*"\nexit ${QUERYSHIFT_FAKE_EXIT:-0}\n');
+  const wrapper = path.join(dir, 'node_modules', 'queryshift', 'bin', 'queryshift.js');
   const r = spawnSync(process.execPath, [wrapper, 'inspect', 'db', '--json'], {
-    env: { ...process.env, PGBOT_FAKE_EXIT: '2' },
+    env: { ...process.env, QUERYSHIFT_FAKE_EXIT: '2' },
     encoding: 'utf8',
   });
   assert.equal(r.status, 2, 'a critical (2) exit must arrive as 2');
@@ -146,21 +146,21 @@ test('exit code and argv pass through verbatim (2 = critical)', { skip: !posix }
 
 test('clean exit is 0', { skip: !posix }, () => {
   const dir = stageFakeBinary('#!/bin/sh\nexit 0\n');
-  const wrapper = path.join(dir, 'node_modules', 'pgbot', 'bin', 'pgbot.js');
+  const wrapper = path.join(dir, 'node_modules', 'queryshift', 'bin', 'queryshift.js');
   assert.equal(spawnSync(process.execPath, [wrapper], { encoding: 'utf8' }).status, 0);
 });
 
 test('spawn failure exits 3 with the launch error', { skip: !posix }, () => {
-  const dir = stageFakeBinary('#!/definitely/missing/pgbot-test-interpreter\n');
-  const wrapper = path.join(dir, 'node_modules', 'pgbot', 'bin', 'pgbot.js');
+  const dir = stageFakeBinary('#!/definitely/missing/queryshift-test-interpreter\n');
+  const wrapper = path.join(dir, 'node_modules', 'queryshift', 'bin', 'queryshift.js');
   const result = spawnSync(process.execPath, [wrapper], { encoding: 'utf8' });
   assert.equal(result.status, 3);
-  assert.match(result.stderr, /pgbot: failed to launch/);
+  assert.match(result.stderr, /queryshift: failed to launch/);
 });
 
 test('missing platform binary → exit 64 with an actionable message', () => {
-  // Run the shim from a scratch dir with no @pgbot package to resolve.
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pgbot-none-'));
+  // Run the shim from a scratch dir with no @queryshift package to resolve.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'queryshift-none-'));
   const r = spawnSync(process.execPath, [shim, '--version'], { cwd: dir, encoding: 'utf8' });
   assert.equal(r.status, 64);
   assert.match(r.stderr, new RegExp(`${process.platform}-${process.arch}`), 'error names the platform');
@@ -174,14 +174,14 @@ test('wrapper preserves a child self-SIGTERM exit', { skip: !posix }, async (t) 
       "const fs = require('fs');",
       "process.stdin.once('data', () => process.kill(process.pid, 'SIGTERM'));",
       'process.stdin.resume();',
-      "fs.writeFileSync(process.env.PGBOT_READYFILE, String(process.pid));",
+      "fs.writeFileSync(process.env.QUERYSHIFT_READYFILE, String(process.pid));",
       '',
     ].join('\n')
   );
-  const wrapper = path.join(dir, 'node_modules', 'pgbot', 'bin', 'pgbot.js');
+  const wrapper = path.join(dir, 'node_modules', 'queryshift', 'bin', 'queryshift.js');
   const readyfile = path.join(dir, 'ready');
   const child = spawn(process.execPath, [wrapper], {
-    env: { ...process.env, PGBOT_READYFILE: readyfile },
+    env: { ...process.env, QUERYSHIFT_READYFILE: readyfile },
     stdio: ['pipe', 'ignore', 'ignore'],
   });
   let binaryPID;
@@ -200,15 +200,15 @@ for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
     const dir = stageFakeBinary(
       [
         '#!/usr/bin/env node',
-        "require('fs').writeFileSync(process.env.PGBOT_READYFILE, String(process.pid));",
+        "require('fs').writeFileSync(process.env.QUERYSHIFT_READYFILE, String(process.pid));",
         'setInterval(() => {}, 1000);',
         '',
       ].join('\n')
     );
-    const wrapper = path.join(dir, 'node_modules', 'pgbot', 'bin', 'pgbot.js');
+    const wrapper = path.join(dir, 'node_modules', 'queryshift', 'bin', 'queryshift.js');
     const readyfile = path.join(dir, 'ready');
     const child = spawn(process.execPath, [wrapper], {
-      env: { ...process.env, PGBOT_READYFILE: readyfile },
+      env: { ...process.env, QUERYSHIFT_READYFILE: readyfile },
       stdio: 'ignore',
     });
     let binaryPID;
@@ -227,12 +227,12 @@ test('forwarded SIGTERM preserves a graceful numeric exit', { skip: !posix }, as
   const dir = stageFakeBinary([
     '#!/usr/bin/env node',
     "process.on('SIGTERM', () => process.exit(143));",
-    "require('fs').writeFileSync(process.env.PGBOT_READYFILE, String(process.pid));",
+    "require('fs').writeFileSync(process.env.QUERYSHIFT_READYFILE, String(process.pid));",
     'setInterval(() => {}, 1000);', '',
   ].join('\n'));
-  const wrapper = path.join(dir, 'node_modules', 'pgbot', 'bin', 'pgbot.js');
+  const wrapper = path.join(dir, 'node_modules', 'queryshift', 'bin', 'queryshift.js');
   const readyfile = path.join(dir, 'ready');
-  const child = spawn(process.execPath, [wrapper], {env:{...process.env,PGBOT_READYFILE:readyfile},stdio:'ignore'});
+  const child = spawn(process.execPath, [wrapper], {env:{...process.env,QUERYSHIFT_READYFILE:readyfile},stdio:'ignore'});
   let binaryPID;
   registerCleanup(t, child, () => binaryPID);
   await waitForFile(readyfile);
