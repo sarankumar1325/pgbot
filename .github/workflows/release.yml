@@ -41,7 +41,7 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Write access to the separate pgrundev/homebrew-tap repo — EITHER the
+          # Write access to the separate sarankumar1325/homebrew-tap repo — EITHER the
           # private half of a write deploy key on that repo (preferred) OR a
           # fine-grained PAT scoped to it (Contents: write). Both are passed (empty
           # when absent — the goreleaser templates need them defined); with
@@ -68,10 +68,10 @@ jobs:
           fi
           VERSION="${GITHUB_REF_NAME#v}"
           node npm/build.mjs "$VERSION"
-          for d in npm/staging/@pgbot/*/; do
+          for d in npm/staging/@queryshift/*/; do
             npm publish "$d" --provenance --access public
           done
-          npm publish npm/staging/pgbot --provenance --access public
+          npm publish npm/staging/queryshift --provenance --access public
 
   # DoD 8: prove the published package actually runs — a packaging break is
   # invisible to the Go test suite and only shows up here. macos-latest is
@@ -90,7 +90,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
-      - name: npx @pgbot/cli@<tag> --version exits 0
+      - name: npx @queryshift/cli@<tag> --version exits 0
         if: env.HAS_NPM == 'true'
         shell: bash
         run: |
@@ -103,19 +103,19 @@ jobs:
           # propagation window itself.
           for i in $(seq 1 20); do
             cache="${RUNNER_TEMP:-/tmp}/npx-cache-$i"
-            if npx -y --cache "$cache" "@pgbot/cli@${VERSION}" --version; then exit 0; fi
-            echo "@pgbot/cli@${VERSION} not installable yet (attempt $i, fresh cache) — waiting for npm propagation"
+            if npx -y --cache "$cache" "@queryshift/cli@${VERSION}" --version; then exit 0; fi
+            echo "@queryshift/cli@${VERSION} not installable yet (attempt $i, fresh cache) — waiting for npm propagation"
             sleep 30
           done
-          echo "FAILED: npx @pgbot/cli@${VERSION} --version never succeeded"
+          echo "FAILED: npx @queryshift/cli@${VERSION} --version never succeeded"
           exit 1
 
-  # Issue #8 was `brew install pgrundev/tap/pgbot` 404ing for months while every
+  # Issue #8 was `brew install sarankumar1325/tap/queryshift` 404ing for months while every
   # release stayed green, because the tap push was silently skipped. Prove the
   # published formula installs THIS tag on a fresh mac, the way a user does it.
   brew-smoke:
     needs: goreleaser
-    name: brew install pgrundev/tap/pgbot
+    name: brew install sarankumar1325/tap/queryshift
     runs-on: macos-latest
     env:
       HAS_TAP_CRED: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY != '' || secrets.HOMEBREW_TAP_TOKEN != '' }}
@@ -123,22 +123,22 @@ jobs:
       - name: brew install the tap formula and check the version
         run: |
           if [ "$HAS_TAP_CRED" != "true" ]; then
-            echo "::error::neither HOMEBREW_TAP_DEPLOY_KEY nor HOMEBREW_TAP_TOKEN is set — the Homebrew formula was NOT published for this release (brew install pgrundev/tap/pgbot will lag behind). See docs/release.md."
+            echo "::error::neither HOMEBREW_TAP_DEPLOY_KEY nor HOMEBREW_TAP_TOKEN is set — the Homebrew formula was NOT published for this release (brew install sarankumar1325/tap/queryshift will lag behind). See docs/release.md."
             exit 1
           fi
           VERSION="${GITHUB_REF_NAME#v}"
           export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1
           for i in $(seq 1 10); do
-            brew untap pgrundev/tap >/dev/null 2>&1 || true
-            if brew install pgrundev/tap/pgbot && [ "$(pgbot --version)" = "pgbot version ${VERSION}" ]; then
-              echo "brew install pgrundev/tap/pgbot → $(pgbot --version) ✓"
-              brew test pgbot
+            brew untap sarankumar1325/tap >/dev/null 2>&1 || true
+            if brew install sarankumar1325/tap/queryshift && [ "$(queryshift --version)" = "queryshift version ${VERSION}" ]; then
+              echo "brew install sarankumar1325/tap/queryshift → $(queryshift --version) ✓"
+              brew test queryshift
               exit 0
             fi
             echo "tap formula not at ${VERSION} yet (attempt $i) — waiting"
             sleep 20
           done
-          echo "FAILED: brew install pgrundev/tap/pgbot never yielded pgbot ${VERSION}"
+          echo "FAILED: brew install sarankumar1325/tap/queryshift never yielded queryshift ${VERSION}"
           exit 1
 
   # The container image must be ANONYMOUSLY pullable. ghcr packages default to
@@ -154,17 +154,17 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           docker logout ghcr.io || true   # ensure the pull is anonymous
-          out="$(docker run --rm ghcr.io/pgrundev/pgbot:"$VERSION" --version)"
+          out="$(docker run --rm ghcr.io/sarankumar1325/queryshift:"$VERSION" --version)"
           echo "$out"
           case "$out" in
-            "pgbot version"*) echo "image is public and runs ✓" ;;
+            "queryshift version"*) echo "image is public and runs ✓" ;;
             *) echo "FAILED: unexpected --version output (or image not anonymously pullable)"; exit 1 ;;
           esac
 
   # Verify the release's own cosign signature — the release SIGNS the checksums but
   # never checked that the signature actually verifies. A broken signing chain
   # would silently ship and only surface when a user runs install.sh with
-  # PGBOT_REQUIRE_SIGNATURE=1. Verify the bundle against the release workflow's
+  # QUERYSHIFT_REQUIRE_SIGNATURE=1. Verify the bundle against the release workflow's
   # OIDC identity.
   verify-signature:
     needs: goreleaser
@@ -175,11 +175,11 @@ jobs:
       - name: cosign verify-blob --bundle
         run: |
           VERSION="${GITHUB_REF_NAME}"
-          base="https://github.com/pgrundev/pgbot/releases/download/${VERSION}"
+          base="https://github.com/sarankumar1325/queryshift/releases/download/${VERSION}"
           curl -fsSL "$base/checksums.txt" -o checksums.txt
           curl -fsSL "$base/checksums.txt.cosign.bundle" -o checksums.txt.cosign.bundle
           cosign verify-blob --bundle checksums.txt.cosign.bundle \
-            --certificate-identity-regexp '^https://github.com/pgrundev/pgbot/\.github/workflows/release\.yml@' \
+            --certificate-identity-regexp '^https://github.com/sarankumar1325/queryshift/\.github/workflows/release\.yml@' \
             --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
             checksums.txt
           echo "published cosign bundle verifies ✓"

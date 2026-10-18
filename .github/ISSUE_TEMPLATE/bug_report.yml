@@ -1,5 +1,5 @@
 name: Bug report
-description: Something pgbot did wrong
+description: Something queryshift did wrong
 labels: [bug]
 body:
   - type: input
@@ -9,10 +9,10 @@ body:
       placeholder: "e.g. 17.2 (managed: RDS/Aurora/Cloud SQL/Azure/Supabase/Neon, or self-hosted)"
     validations: { required: true }
   - type: input
-    id: pgbotversion
+    id: queryshiftversion
     attributes:
-      label: pgbot version
-      placeholder: "pgbot --version"
+      label: queryshift version
+      placeholder: "queryshift --version"
     validations: { required: true }
   - type: textarea
     id: what
