@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/collect"
-	"github.com/pgrundev/pgbot/internal/conn"
-	"github.com/pgrundev/pgbot/internal/findings"
-	"github.com/pgrundev/pgbot/internal/model"
 	"github.com/pgrundev/pggo"
+	"github.com/sarankumar1325/queryshift/internal/collect"
+	"github.com/sarankumar1325/queryshift/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/findings"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // A publication over a table with no primary key is accepted by Postgres and only
@@ -18,9 +18,9 @@ import (
 // run the real collector as the read-only role and check the finding. Adding a
 // primary key must clear it.
 func TestIntegration_replicaIdentityMissing(t *testing.T) {
-	su := os.Getenv("PGBOT_TEST_SUPERUSER_DSN")
+	su := os.Getenv("QUERYSHIFT_TEST_SUPERUSER_DSN")
 	if su == "" {
-		t.Skip("set PGBOT_TEST_SUPERUSER_DSN (a superuser DSN) to run the publication fixture")
+		t.Skip("set QUERYSHIFT_TEST_SUPERUSER_DSN (a superuser DSN) to run the publication fixture")
 	}
 	ro := dsn(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -32,19 +32,19 @@ func TestIntegration_replicaIdentityMissing(t *testing.T) {
 	t.Cleanup(func() { admin.Close() })
 
 	cleanup := func() {
-		_, _ = admin.Exec(context.Background(), `DROP PUBLICATION IF EXISTS pgbot_it_pub`)
-		_, _ = admin.Exec(context.Background(), `DROP TABLE IF EXISTS public.pgbot_it_nopk`)
+		_, _ = admin.Exec(context.Background(), `DROP PUBLICATION IF EXISTS queryshift_it_pub`)
+		_, _ = admin.Exec(context.Background(), `DROP TABLE IF EXISTS public.queryshift_it_nopk`)
 	}
 	cleanup()
 	t.Cleanup(cleanup)
 	if _, err := admin.SimpleQuery(ctx, `
-		CREATE TABLE public.pgbot_it_nopk (id bigint, note text);
-		INSERT INTO public.pgbot_it_nopk VALUES (1, 'a');
-		CREATE PUBLICATION pgbot_it_pub FOR TABLE public.pgbot_it_nopk`); err != nil {
+		CREATE TABLE public.queryshift_it_nopk (id bigint, note text);
+		INSERT INTO public.queryshift_it_nopk VALUES (1, 'a');
+		CREATE PUBLICATION queryshift_it_pub FOR TABLE public.queryshift_it_nopk`); err != nil {
 		t.Fatalf("fixture: %v", err)
 	}
 	// The breakage this finding predicts, confirmed against the server.
-	if _, err := admin.Exec(ctx, `UPDATE public.pgbot_it_nopk SET note = 'b'`); err == nil {
+	if _, err := admin.Exec(ctx, `UPDATE public.queryshift_it_nopk SET note = 'b'`); err == nil {
 		t.Fatal("expected the UPDATE to fail without a replica identity")
 	}
 
@@ -67,14 +67,14 @@ func TestIntegration_replicaIdentityMissing(t *testing.T) {
 	c := run()
 	var row *model.PublishedTable
 	for i := range c.ReplicaIdentity.Unidentifiable {
-		if c.ReplicaIdentity.Unidentifiable[i].Name == "pgbot_it_nopk" {
+		if c.ReplicaIdentity.Unidentifiable[i].Name == "queryshift_it_nopk" {
 			row = &c.ReplicaIdentity.Unidentifiable[i]
 		}
 	}
 	if row == nil {
 		t.Fatalf("the published table must be collected, got %+v", c.ReplicaIdentity.Unidentifiable)
 	}
-	if row.Identity != "d" || row.Publications != "pgbot_it_pub" {
+	if row.Identity != "d" || row.Publications != "queryshift_it_pub" {
 		t.Errorf("collected row must mirror the catalog: %+v", *row)
 	}
 	var f *model.Finding
@@ -88,16 +88,16 @@ func TestIntegration_replicaIdentityMissing(t *testing.T) {
 		t.Fatalf("expected critical replica_identity_missing, got %+v", f)
 	}
 
-	if _, err := admin.Exec(ctx, `ALTER TABLE public.pgbot_it_nopk ADD PRIMARY KEY (id)`); err != nil {
+	if _, err := admin.Exec(ctx, `ALTER TABLE public.queryshift_it_nopk ADD PRIMARY KEY (id)`); err != nil {
 		t.Fatalf("add pk: %v", err)
 	}
 	for _, r := range run().ReplicaIdentity.Unidentifiable {
-		if r.Name == "pgbot_it_nopk" {
+		if r.Name == "queryshift_it_nopk" {
 			t.Fatalf("a primary key must clear the finding, still reported: %+v", r)
 		}
 	}
 	// And the write the finding predicted now succeeds.
-	if _, err := admin.Exec(ctx, `UPDATE public.pgbot_it_nopk SET note = 'c'`); err != nil {
+	if _, err := admin.Exec(ctx, `UPDATE public.queryshift_it_nopk SET note = 'c'`); err != nil {
 		t.Errorf("UPDATE should succeed once a replica identity exists: %v", err)
 	}
 }

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pgrundev/pgbot/internal/conn"
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // relFalse reports whether a reloption boolean string means "off" (autovacuum_enabled=false).

@@ -3,8 +3,8 @@ package collect
 import (
 	"testing"
 
-	"github.com/pgrundev/pgbot/internal/conn"
-	"github.com/pgrundev/pgbot/internal/model"
+	"github.com/sarankumar1325/queryshift/internal/conn"
+	"github.com/sarankumar1325/queryshift/internal/model"
 )
 
 // A zero-scan index that backs ANY constraint (PK, unique, exclusion, or a FK's
