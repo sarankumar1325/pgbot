@@ -197,7 +197,7 @@ func setupTunnelFixture(t *testing.T) *tunnelFixture {
 	clientSigner, clientPriv := newSigner(t)
 	f := &tunnelFixture{
 		srv:        startTestSSHServer(t, hostSigner, clientSigner.PublicKey()),
-		alias:      "pgbot-test-jump",
+		alias:      "queryshift-test-jump",
 		dir:        dir,
 		keyPath:    filepath.Join(dir, "id_ed25519"),
 		knownPath:  filepath.Join(dir, "known_hosts"),

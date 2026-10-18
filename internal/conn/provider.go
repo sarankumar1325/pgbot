@@ -2,7 +2,7 @@ package conn
 
 import "strings"
 
-// Provider identifies the managed Postgres platform, so pgbot can give a
+// Provider identifies the managed Postgres platform, so queryshift can give a
 // provider-specific fix when something needs enabling (notably
 // pg_stat_statements, which lands on the degraded path for a large fraction of
 // first runs on RDS/Aurora). Detected from the host, version() text, and the

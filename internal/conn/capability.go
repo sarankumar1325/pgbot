@@ -26,7 +26,7 @@ type Capabilities struct {
 	// ExtensionSchemas maps an installed extension to the namespace its objects
 	// live in (pg_extension.extnamespace). Supabase installs pg_stat_statements
 	// (and hypopg) in "extensions", not public, and a dedicated read-only role
-	// rarely has that on its search_path — so pgbot must address extension
+	// rarely has that on its search_path — so queryshift must address extension
 	// objects by qualified name, never rely on resolution. Nil/absent → unknown.
 	ExtensionSchemas map[string]string
 }

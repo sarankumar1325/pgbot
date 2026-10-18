@@ -37,7 +37,7 @@ func detectPooler(ctx context.Context, c *pggo.Conn, cc *pggo.Config) PoolerInfo
 	info := PoolerInfo{Hint: poolerHint(cc)}
 
 	// (1) prepared-statement probe
-	psName := fmt.Sprintf("pgbot_ps_%d", nonce())
+	psName := fmt.Sprintf("queryshift_ps_%d", nonce())
 	if err := c.Prepare(ctx, psName, "SELECT 1"); err != nil {
 		info.SimpleProtocol = true
 	} else {
@@ -47,7 +47,7 @@ func detectPooler(ctx context.Context, c *pggo.Conn, cc *pggo.Config) PoolerInfo
 	// (2) session-persistence probe. pgGo sends it as an unnamed statement in one
 	// Sync, which works even where named prepared statements fail, so a
 	// prepared-statement failure can't masquerade as non-persistence.
-	want := fmt.Sprintf("pgbot_probe_%d", nonce())
+	want := fmt.Sprintf("queryshift_probe_%d", nonce())
 	if _, err := c.Exec(ctx, "SET application_name = '"+want+"'"); err == nil {
 		var got string
 		err := c.QueryRow(ctx, "SELECT current_setting('application_name')").Scan(&got)
@@ -55,7 +55,7 @@ func detectPooler(ctx context.Context, c *pggo.Conn, cc *pggo.Config) PoolerInfo
 			info.Detected = true
 		}
 	}
-	_, _ = c.Exec(ctx, "SET application_name = 'pgbot'") // restore
+	_, _ = c.Exec(ctx, "SET application_name = 'queryshift'") // restore
 
 	// A prepared-statement failure is itself a strong transaction-pooler signal.
 	// So are the well-known managed-pooler endpoints — a single idle client gets
@@ -80,7 +80,7 @@ func detectPooler(ctx context.Context, c *pggo.Conn, cc *pggo.Config) PoolerInfo
 // reading it back. PgDog intercepts session-level SET pgdog.* and does not
 // forward it, so the backend never sees the value; on real PostgreSQL the
 // dotted name is stored as a placeholder GUC and echoes back. A control GUC
-// (pgbot.probe) set the same way rules out the transaction-pooler false
+// (queryshift.probe) set the same way rules out the transaction-pooler false
 // positive: if PgBouncer split the two round trips across backends, the control
 // vanishes too and the probe reads inconclusive, not PgDog.
 //
@@ -89,22 +89,22 @@ func detectPooler(ctx context.Context, c *pggo.Conn, cc *pggo.Config) PoolerInfo
 // exists in every deployment. pgdog.sharding_key must never be used here — on
 // some configs it errors and poisons the session for every later statement.
 func detectPgDog(ctx context.Context, c *pggo.Conn) bool {
-	want := fmt.Sprintf("pgbot_%d", nonce())
-	if _, err := c.Exec(ctx, "SET pgbot.probe = '"+want+"'"); err != nil {
+	want := fmt.Sprintf("queryshift_%d", nonce())
+	if _, err := c.Exec(ctx, "SET queryshift.probe = '"+want+"'"); err != nil {
 		return false
 	}
 	if _, err := c.Exec(ctx, "SET pgdog.shard = 0"); err != nil {
-		_, _ = c.Exec(ctx, "SET pgbot.probe TO DEFAULT")
+		_, _ = c.Exec(ctx, "SET queryshift.probe TO DEFAULT")
 		return false
 	}
 	var control, shard *string
 	err := c.QueryRow(ctx,
-		"SELECT current_setting('pgbot.probe', true), current_setting('pgdog.shard', true)").Scan(&control, &shard)
+		"SELECT current_setting('queryshift.probe', true), current_setting('pgdog.shard', true)").Scan(&control, &shard)
 	// Clean up with SET … TO DEFAULT, never RESET: SET of a dotted name is
 	// accepted even by a backend that never saw the parameter, while RESET
-	// errors there — and pgbot must not book server errors it would then report.
+	// errors there — and queryshift must not book server errors it would then report.
 	_, _ = c.Exec(ctx, "SET pgdog.shard TO DEFAULT")
-	_, _ = c.Exec(ctx, "SET pgbot.probe TO DEFAULT")
+	_, _ = c.Exec(ctx, "SET queryshift.probe TO DEFAULT")
 	return err == nil && pgdogVerdict(control, shard, want)
 }
 
@@ -139,12 +139,12 @@ func poolerHint(cc *pggo.Config) string {
 	}
 }
 
-// Note is the one-line message printed when a pooler is detected and pgbot
-// proceeds (the default). Rates are still correct because pgbot reads each
+// Note is the one-line message printed when a pooler is detected and queryshift
+// proceeds (the default). Rates are still correct because queryshift reads each
 // counter in its own transaction — pg_stat_* are cluster-wide, so the backend
 // that serves a read doesn't matter.
 func (p PoolerInfo) Note() string {
-	return fmt.Sprintf("pgbot: connected via %s — proceeding; rates are still correct "+
+	return fmt.Sprintf("queryshift: connected via %s — proceeding; rates are still correct "+
 		"(each counter is read in its own transaction). Pass --strict-pooler to refuse instead.", p.Hint)
 }
 

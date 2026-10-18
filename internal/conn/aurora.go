@@ -1,6 +1,6 @@
 package conn
 
-// Aurora instance discovery for `pgbot inspect --all-instances`. An Aurora
+// Aurora instance discovery for `queryshift inspect --all-instances`. An Aurora
 // cluster endpoint stands for several DB instances (one writer, N readers), and
 // pg_stat_* on one of them says nothing about the others. Discovery needs only
 // what the issue asked for — SQL and DNS: aurora_replica_status() lists the
@@ -63,7 +63,7 @@ func AuroraInstances(ctx context.Context, t *Target) ([]AuroraInstance, error) {
 }
 
 // auroraInstancesFromStatus turns aurora_replica_status() rows into instances.
-// Exactly one writer is expected; anything else is a topology pgbot does not
+// Exactly one writer is expected; anything else is a topology queryshift does not
 // understand (a failover in flight, a global-database secondary) and is reported
 // rather than inspected under a wrong role.
 func auroraInstancesFromStatus(status []auroraStatusRow) ([]AuroraInstance, error) {

@@ -1,6 +1,6 @@
 package conn
 
-// SSH tunnelling. pgbot's connection path is libpq-only: it reaches whatever the
+// SSH tunnelling. queryshift's connection path is libpq-only: it reaches whatever the
 // DSN's host resolves to, which leaves out every database that only answers from
 // inside a bastion, a VPN-routed jump host, or a private VPC subnet.
 //
@@ -11,7 +11,7 @@ package conn
 // matches on it. A `ssh -L` forward would force the DSN to say 127.0.0.1 and
 // silently break both, besides leaving a port open to every local user.
 //
-// Host identity is NOT pgbot's policy to invent — it reads StrictHostKeyChecking
+// Host identity is NOT queryshift's policy to invent — it reads StrictHostKeyChecking
 // and UserKnownHostsFile out of ssh_config and behaves the way the user's own ssh
 // already does for that host.
 
@@ -35,10 +35,10 @@ import (
 
 // SSHTunnelEnv is the environment variable that configures the jump host when
 // --ssh-tunnel isn't passed.
-const SSHTunnelEnv = "PGBOT_SSH_TUNNEL"
+const SSHTunnelEnv = "QUERYSHIFT_SSH_TUNNEL"
 
 // tunnel state. The client is a process-wide singleton: --all-databases opens one
-// Target per database and `pgbot mcp` opens one per request, and every one of them
+// Target per database and `queryshift mcp` opens one per request, and every one of them
 // should ride the same SSH connection rather than re-authenticating.
 var (
 	tunnelMu   sync.Mutex
@@ -102,7 +102,7 @@ func sshDialFunc() func(context.Context, string, string) (net.Conn, error) {
 		// A pooled connection can outlive the SSH transport (an idle timeout on the
 		// jump host, a laptop that slept, a VPN that flapped). Drop the dead client
 		// and re-dial once before surfacing the failure — the pool would otherwise
-		// stay broken for the rest of a long-lived `pgbot mcp` process.
+		// stay broken for the rest of a long-lived `queryshift mcp` process.
 		dropTunnelClient(c)
 		c, rerr := tunnelClient(ctx)
 		if rerr != nil {
@@ -295,7 +295,7 @@ func resolveSSHHost(spec string) (sshHost, error) {
 	return h, nil
 }
 
-// sshAuthMethods builds the auth chain: the agent first (it holds keys pgbot
+// sshAuthMethods builds the auth chain: the agent first (it holds keys queryshift
 // cannot read off disk, and never exposes the private material), then each
 // readable IdentityFile. The returned closer releases the agent socket; call it
 // once the handshake is over, since the signers are only consulted during auth
@@ -323,12 +323,12 @@ func sshAuthMethods(h sshHost) ([]ssh.AuthMethod, func(), error) {
 		if err != nil {
 			var pm *ssh.PassphraseMissingError
 			if !errors.As(err, &pm) {
-				warnOnce(path, fmt.Sprintf("pgbot: ignoring unusable key %s: %v", path, err))
+				warnOnce(path, fmt.Sprintf("queryshift: ignoring unusable key %s: %v", path, err))
 				continue
 			}
 			signer, err = promptForKey(path, raw)
 			if err != nil {
-				warnOnce(path, fmt.Sprintf("pgbot: skipping %s: %v", path, err))
+				warnOnce(path, fmt.Sprintf("queryshift: skipping %s: %v", path, err))
 				continue
 			}
 		}
@@ -418,7 +418,7 @@ func expandAgentSpec(ia string) string {
 
 // hostKeyCallback reproduces the user's own ssh policy for this host rather than
 // imposing one. StrictHostKeyChecking=no/off accepts anything; accept-new (and
-// ask, which pgbot cannot honour non-interactively) accepts a host it has never
+// ask, which queryshift cannot honour non-interactively) accepts a host it has never
 // seen but still refuses one whose key CHANGED — the case that actually signals
 // interception. A changed key is refused under every mode except an explicit no.
 //
@@ -434,7 +434,7 @@ func hostKeyCallback(alias string) (ssh.HostKeyCallback, error) {
 		record = paths[0]
 	}
 	accept := func(hostname string, key ssh.PublicKey) error {
-		fmt.Fprintf(os.Stderr, "pgbot: accepting unknown ssh host key for %q (%s)\n", alias, ssh.FingerprintSHA256(key))
+		fmt.Fprintf(os.Stderr, "queryshift: accepting unknown ssh host key for %q (%s)\n", alias, ssh.FingerprintSHA256(key))
 		recordHostKey(record, hostname, key)
 		return nil
 	}
@@ -444,7 +444,7 @@ func hostKeyCallback(alias string) (ssh.HostKeyCallback, error) {
 			return nil, errors.New("StrictHostKeyChecking=yes but no readable UserKnownHostsFile — cannot verify the jump host")
 		}
 		if record == "" {
-			fmt.Fprintf(os.Stderr, "pgbot: ssh host key for %q is not being verified (UserKnownHostsFile is /dev/null)\n", alias)
+			fmt.Fprintf(os.Stderr, "queryshift: ssh host key for %q is not being verified (UserKnownHostsFile is /dev/null)\n", alias)
 			return ssh.InsecureIgnoreHostKey(), nil
 		}
 		// No known_hosts yet, so every host is a first sight: accept and record it,
@@ -470,7 +470,7 @@ func hostKeyCallback(alias string) (ssh.HostKeyCallback, error) {
 		if len(ke.Want) > 0 {
 			// The host is known and presented a DIFFERENT key. Never auto-accept.
 			if strict == "no" || strict == "off" {
-				fmt.Fprintf(os.Stderr, "pgbot: WARNING — host key for %q CHANGED; continuing because StrictHostKeyChecking=no\n", alias)
+				fmt.Fprintf(os.Stderr, "queryshift: WARNING — host key for %q CHANGED; continuing because StrictHostKeyChecking=no\n", alias)
 				return nil
 			}
 			return fmt.Errorf("host key for %q does not match known_hosts — refusing to connect", alias)
@@ -501,7 +501,7 @@ func recordHostKey(path, hostname string, key ssh.PublicKey) {
 		}
 	}
 	if err != nil {
-		warnOnce("known_hosts:"+path, fmt.Sprintf("pgbot: could not record the host key in %s: %v", path, err))
+		warnOnce("known_hosts:"+path, fmt.Sprintf("queryshift: could not record the host key in %s: %v", path, err))
 	}
 }
 

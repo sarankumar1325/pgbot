@@ -8,15 +8,15 @@ import (
 	"github.com/pgrundev/pggo"
 )
 
-// Self-exclusion must key on backend PID, not the 'pgbot' application_name: a
-// stranger's session that sets application_name='pgbot' stays visible
-// (unspoofable), while every one of pgbot's own pool backends is dropped. The
+// Self-exclusion must key on backend PID, not the 'queryshift' application_name: a
+// stranger's session that sets application_name='queryshift' stays visible
+// (unspoofable), while every one of queryshift's own pool backends is dropped. The
 // test checks specific PIDs, so it is immune to any other activity on the
 // database (e.g. CI's concurrent write load).
 func TestIntegration_excludeSelf_byPIDNotLabel(t *testing.T) {
-	d := os.Getenv("PGBOT_TEST_DSN")
+	d := os.Getenv("QUERYSHIFT_TEST_DSN")
 	if d == "" {
-		t.Skip("set PGBOT_TEST_DSN to run integration tests")
+		t.Skip("set QUERYSHIFT_TEST_DSN to run integration tests")
 	}
 	ctx := context.Background()
 	target, err := Connect(ctx, d)
@@ -31,12 +31,12 @@ func TestIntegration_excludeSelf_byPIDNotLabel(t *testing.T) {
 		t.Fatal("pool warmed but no own PIDs were captured")
 	}
 
-	// An impostor: an external connection labelled application_name='pgbot'.
+	// An impostor: an external connection labelled application_name='queryshift'.
 	cfg, err := pggo.ParseConfig(d)
 	if err != nil {
 		t.Fatalf("parse dsn: %v", err)
 	}
-	cfg.RuntimeParams["application_name"] = "pgbot"
+	cfg.RuntimeParams["application_name"] = "queryshift"
 	imp, err := pggo.ConnectConfig(ctx, cfg)
 	if err != nil {
 		t.Fatalf("impostor connect: %v", err)
@@ -66,11 +66,11 @@ func TestIntegration_excludeSelf_byPIDNotLabel(t *testing.T) {
 	}
 
 	if !visible[impPID] {
-		t.Errorf("external session labelled application_name='pgbot' (pid %d) must stay visible — exclude by PID, not label", impPID)
+		t.Errorf("external session labelled application_name='queryshift' (pid %d) must stay visible — exclude by PID, not label", impPID)
 	}
 	for _, p := range own {
 		if visible[p] {
-			t.Errorf("pgbot's own backend pid %d must be excluded", p)
+			t.Errorf("queryshift's own backend pid %d must be excluded", p)
 		}
 	}
 }

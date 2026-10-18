@@ -82,7 +82,7 @@ func connect(ctx context.Context, connString, database, host string) (*Target, e
 		// member's own certificate.
 		cfg.Host = host
 	}
-	cfg.RuntimeParams["application_name"] = "pgbot"
+	cfg.RuntimeParams["application_name"] = "queryshift"
 
 	// Route the TCP leg through the SSH jump host when one is configured. This has
 	// to happen before probe(): the probe connection dials too, and it must take
@@ -98,7 +98,7 @@ func connect(ctx context.Context, connString, database, host string) (*Target, e
 	// The driver never sends client-only params to the server. See clientOnlyParams.
 	for _, p := range clientOnlyParams {
 		if hasConnParam(connString, p) {
-			fmt.Fprintf(os.Stderr, "pgbot: ignoring connection param %q — the driver can't honor it; TLS from sslmode still applies\n", p)
+			fmt.Fprintf(os.Stderr, "queryshift: ignoring connection param %q — the driver can't honor it; TLS from sslmode still applies\n", p)
 		}
 	}
 
@@ -111,9 +111,9 @@ func connect(ctx context.Context, connString, database, host string) (*Target, e
 		return nil, err
 	}
 
-	// Track our own backend PIDs so collectors can exclude every pgbot connection
+	// Track our own backend PIDs so collectors can exclude every queryshift connection
 	// from pg_stat_activity, not just the one running a given query (ExcludeSelf).
-	// The probe backend is gone by now but its PID still matters: `pgbot logs`
+	// The probe backend is gone by now but its PID still matters: `queryshift logs`
 	// filters historical log lines by PID, and the probe wrote some.
 	self := newSelfPIDs()
 	self.add(probePID)
@@ -142,7 +142,7 @@ func (t *Target) Close() {
 }
 
 // Warm opens the pool to its full size and releases the connections back, so
-// every one of pgbot's backend PIDs is registered (ExcludeSelf) BEFORE any
+// every one of queryshift's backend PIDs is registered (ExcludeSelf) BEFORE any
 // collector samples pg_stat_activity. Without this, collectors that open pool
 // connections concurrently could sample while a sibling is still being created —
 // its PID not yet tracked — and count it as a phantom idle-in-transaction
@@ -166,8 +166,8 @@ func (t *Target) Warm(ctx context.Context) {
 	}
 }
 
-// sessionPins are the GUCs applySessionSetup sets on every pgbot session
-// (application_name is pinned too, but separately — it is pgbot's identity in
+// sessionPins are the GUCs applySessionSetup sets on every queryshift session
+// (application_name is pinned too, but separately — it is queryshift's identity in
 // pg_stat_activity and must never be unpinned). Anything that reports the SERVER's
 // configuration must look past these: pg_settings.setting and current_setting()
 // otherwise show THIS session's pinned values, not the database's (e.g.
@@ -179,11 +179,11 @@ var sessionPins = []struct{ name, value string }{
 	{"default_transaction_read_only", "on"},
 }
 
-// UnpinLocal reverts pgbot's session pins for the current transaction only
+// UnpinLocal reverts queryshift's session pins for the current transaction only
 // (SET LOCAL … = DEFAULT restores the server/database/role value the session would
 // have without our SET). COMMIT re-establishes the pins, so a caller gets one
 // transaction in which pg_settings and current_setting() describe the database
-// rather than pgbot. Only the settings collector needs it. stats_fetch_consistency
+// rather than queryshift. Only the settings collector needs it. stats_fetch_consistency
 // (PG15+, also pinned) is left alone: it isn't a tuning parameter, and a SET LOCAL
 // of an unknown GUC would abort the transaction on PG < 15.
 func UnpinLocal(ctx context.Context, tx *pggo.Tx) error {
@@ -196,10 +196,10 @@ func UnpinLocal(ctx context.Context, tx *pggo.Tx) error {
 }
 
 // applySessionSetup pins every physical connection. statement_timeout and
-// lock_timeout are mandatory: pgbot must never become the incident it was
+// lock_timeout are mandatory: queryshift must never become the incident it was
 // invoked to diagnose.
 func applySessionSetup(ctx context.Context, c *pggo.Conn, caps Capabilities) error {
-	stmts := []string{"SET application_name = 'pgbot'"}
+	stmts := []string{"SET application_name = 'queryshift'"}
 	for _, p := range sessionPins {
 		stmts = append(stmts, "SET "+p.name+" = "+p.value)
 	}
@@ -250,8 +250,8 @@ func probe(ctx context.Context, cc *pggo.Config) (Capabilities, PoolerInfo, uint
 		       -- not catalogue them in pg_proc on every release (confirmed missing on
 		       -- 18.3). Resolve them by signature rather than CALLING them: a call
 		       -- fails on every other server, which writes an ERROR to the server log
-		       -- and books a rollback in pg_stat_database on each pgbot run — the very
-		       -- counter pgbot reports. to_regprocedure does neither.
+		       -- and books a rollback in pg_stat_database on each queryshift run — the very
+		       -- counter queryshift reports. to_regprocedure does neither.
 		       to_regprocedure('aurora_version()') IS NOT NULL
 		         OR to_regprocedure('aurora_replica_status()') IS NOT NULL`
 	err = c.QueryRow(ctx, q).Scan(&caps.VersionNum, &caps.VersionText, &caps.Database,
@@ -306,7 +306,7 @@ func (t *Target) ReadOnlyTx(ctx context.Context, fn func(*pggo.Tx) error) error 
 	}
 	// COMMIT the read-only probe rather than rolling it back. A read-only txn
 	// writes nothing either way, but rolling back would increment the very
-	// xact_rollback counter pgbot reports — on a quiet database, pgbot observing
+	// xact_rollback counter queryshift reports — on a quiet database, queryshift observing
 	// itself would manufacture a "high rollback ratio" finding.
 	return tx.Commit(ctx)
 }

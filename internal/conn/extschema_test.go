@@ -3,7 +3,7 @@ package conn
 import "testing"
 
 // Issue #10: Supabase (and any DBA who runs CREATE EXTENSION … SCHEMA x)
-// installs pg_stat_statements outside public. pgbot's probe saw the extension
+// installs pg_stat_statements outside public. queryshift's probe saw the extension
 // in pg_extension but every read used the bare relation name, so the queries
 // section failed with 42P01 while the capability list still said "present".
 // The fix qualifies the fixed allowlisted object names with the namespace the

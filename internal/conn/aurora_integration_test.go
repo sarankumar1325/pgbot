@@ -14,12 +14,12 @@ import (
 // derive each instance endpoint from the DSN's host, connect to each, and prove
 // the derived endpoint reached the member it names. Run it as
 //
-//	PGBOT_AURORA_TEST_DSN="postgres://user:pw@cluster.cluster-xyz.region.rds.amazonaws.com/db?sslmode=require" \
+//	QUERYSHIFT_AURORA_TEST_DSN="postgres://user:pw@cluster.cluster-xyz.region.rds.amazonaws.com/db?sslmode=require" \
 //	  go test ./internal/conn/ -run TestIntegration_auroraInstances -v
 func TestIntegration_auroraInstances(t *testing.T) {
-	dsn := os.Getenv("PGBOT_AURORA_TEST_DSN")
+	dsn := os.Getenv("QUERYSHIFT_AURORA_TEST_DSN")
 	if dsn == "" {
-		t.Skip("set PGBOT_AURORA_TEST_DSN (a native Aurora cluster endpoint) to run")
+		t.Skip("set QUERYSHIFT_AURORA_TEST_DSN (a native Aurora cluster endpoint) to run")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()

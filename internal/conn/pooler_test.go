@@ -57,9 +57,9 @@ func TestPoolerHint(t *testing.T) {
 }
 
 func TestPgDogVerdict(t *testing.T) {
-	const want = "pgbot_42"
+	const want = "queryshift_42"
 	nonce := want
-	stale := "pgbot_old"
+	stale := "queryshift_old"
 	zero := "0"
 	empty := ""
 	cases := []struct {
