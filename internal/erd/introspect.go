@@ -49,11 +49,22 @@ WHERE con.contype = 'f'
   AND ($1 = '' OR ns.nspname = $1)
 ORDER BY 1, 2, 3`
 
+// IntrospectProgressFunc receives live status updates during schema introspection.
+type IntrospectProgressFunc func(stage string, detail string)
+
 // Introspect reads the schema structure for the diagram. schemaFilter narrows
 // to one schema; "" means every user schema.
 func Introspect(ctx context.Context, q Querier, schemaFilter string) (Schema, error) {
+	return IntrospectWithProgress(ctx, q, schemaFilter, nil)
+}
+
+// IntrospectWithProgress reads the schema structure with optional progress callbacks.
+func IntrospectWithProgress(ctx context.Context, q Querier, schemaFilter string, onProgress IntrospectProgressFunc) (Schema, error) {
 	var s Schema
 
+	if onProgress != nil {
+		onProgress("Querying catalog", "Reading user tables and column definitions from pg_class & pg_attribute")
+	}
 	rows, err := q.Query(ctx, columnsSQL, schemaFilter)
 	if err != nil {
 		return s, fmt.Errorf("introspect columns: %w", err)
@@ -84,6 +95,9 @@ func Introspect(ctx context.Context, q Querier, schemaFilter string) (Schema, er
 		return s, err
 	}
 
+	if onProgress != nil {
+		onProgress("Analyzing foreign keys", fmt.Sprintf("Found %d user tables; mapping foreign keys from pg_constraint", len(order)))
+	}
 	rows, err = q.Query(ctx, fksSQL, schemaFilter)
 	if err != nil {
 		return s, fmt.Errorf("introspect foreign keys: %w", err)
@@ -110,7 +124,13 @@ func Introspect(ctx context.Context, q Querier, schemaFilter string) (Schema, er
 	for _, key := range order {
 		s.Tables = append(s.Tables, *byTable[key])
 	}
+	if onProgress != nil {
+		onProgress("Reading indexes & metrics", fmt.Sprintf("Mapped %d foreign keys; reading indexes and database size", len(s.Edges)))
+	}
 	introspectExtras(ctx, q, schemaFilter, &s)
+	if onProgress != nil {
+		onProgress("Schema complete", fmt.Sprintf("Loaded %d tables and %d foreign keys", len(s.Tables), len(s.Edges)))
+	}
 	return s, nil
 }
 
