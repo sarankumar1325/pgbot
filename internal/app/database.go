@@ -26,30 +26,96 @@ type DatabaseWorkspace struct {
 	Mermaid  string
 }
 
+// DatabaseLoadUpdate represents a live status or progress update while loading a database workspace.
+type DatabaseLoadUpdate struct {
+	Stage  string
+	Log    string
+	Result *DatabaseWorkspace
+	Err    error
+}
+
+// StreamLoadDatabase connects to the database, introspects tables, columns, indexes,
+// and foreign keys, and builds the ER model while streaming live progress updates.
+func StreamLoadDatabase(ctx context.Context, connectionString string) <-chan DatabaseLoadUpdate {
+	updates := make(chan DatabaseLoadUpdate, 32)
+	go func() {
+		defer close(updates)
+		send := func(stage, log string) {
+			select {
+			case <-ctx.Done():
+			case updates <- DatabaseLoadUpdate{Stage: stage, Log: log}:
+			}
+		}
+
+		connectionString = stripUnsupportedConnectionParams(strings.TrimSpace(connectionString))
+		if connectionString == "" {
+			updates <- DatabaseLoadUpdate{Err: fmt.Errorf("connection string is required")}
+			return
+		}
+
+		send("Validating", "Parsing connection string and credentials")
+
+		target, err := conn.ConnectWithProgress(ctx, connectionString, func(stage, detail string) {
+			send(stage, detail)
+		})
+		if err != nil {
+			updates <- DatabaseLoadUpdate{Err: fmt.Errorf("connect: %s", conn.RedactConnString(err.Error()))}
+			return
+		}
+		defer target.Close()
+
+		schema, err := erd.IntrospectWithProgress(ctx, target.Pool, "", func(stage, detail string) {
+			send(stage, detail)
+		})
+		if err != nil {
+			updates <- DatabaseLoadUpdate{Err: fmt.Errorf("load schema: %s", conn.RedactConnString(err.Error()))}
+			return
+		}
+
+		version := postgresVersion(target.Caps.VersionNum)
+		schema.Info.Version = version
+
+		send("Rendering diagram", "Building ASCII ER diagram and Mermaid models")
+		er := erd.RenderASCII(schema, false)
+		mermaid := erd.RenderMermaid(schema)
+
+		workspace := &DatabaseWorkspace{
+			Host:     target.Pool.Config().Host,
+			Database: target.Caps.Database,
+			Version:  version,
+			Provider: string(target.Caps.Provider),
+			Schema:   schema,
+			ER:       er,
+			Mermaid:  mermaid,
+		}
+
+		send("Ready", fmt.Sprintf("Workspace loaded: %d tables, %d relationships in %s", len(schema.Tables), len(schema.Edges), workspace.Database))
+		updates <- DatabaseLoadUpdate{
+			Stage:  "Ready",
+			Log:    "Workspace loaded successfully",
+			Result: workspace,
+		}
+	}()
+	return updates
+}
+
 // LoadDatabase reads the current schema and relationships over QueryShift's
 // existing read-only connection path.
 func LoadDatabase(ctx context.Context, connectionString string) (*DatabaseWorkspace, error) {
-	connectionString = stripUnsupportedConnectionParams(strings.TrimSpace(connectionString))
-	if connectionString == "" {
-		return nil, fmt.Errorf("connection string is required")
+	updates := StreamLoadDatabase(ctx, connectionString)
+	var lastResult *DatabaseWorkspace
+	for update := range updates {
+		if update.Err != nil {
+			return nil, update.Err
+		}
+		if update.Result != nil {
+			lastResult = update.Result
+		}
 	}
-	target, err := conn.Connect(ctx, connectionString)
-	if err != nil {
-		return nil, fmt.Errorf("connect: %s", conn.RedactConnString(err.Error()))
+	if lastResult == nil {
+		return nil, fmt.Errorf("connection failed: stream closed without a workspace")
 	}
-	defer target.Close()
-
-	schema, err := erd.Introspect(ctx, target.Pool, "")
-	if err != nil {
-		return nil, fmt.Errorf("load schema: %s", conn.RedactConnString(err.Error()))
-	}
-	version := postgresVersion(target.Caps.VersionNum)
-	schema.Info.Version = version
-	return &DatabaseWorkspace{
-		Host: target.Pool.Config().Host, Database: target.Caps.Database,
-		Version: version, Provider: string(target.Caps.Provider), Schema: schema,
-		ER: erd.RenderASCII(schema, false), Mermaid: erd.RenderMermaid(schema),
-	}, nil
+	return lastResult, nil
 }
 
 func postgresVersion(version int) string {
@@ -59,6 +125,22 @@ func postgresVersion(version int) string {
 		return fmt.Sprintf("PostgreSQL %d.%d", major, version%100)
 	}
 	return fmt.Sprintf("PostgreSQL %d.%d.%d", major, minor, version%100)
+}
+
+// FormatHostDisplay extracts the target host and database name for UI display without exposing credentials.
+func FormatHostDisplay(connectionString string) string {
+	cfg, err := pggo.ParseConfig(stripUnsupportedConnectionParams(strings.TrimSpace(connectionString)))
+	if err == nil && cfg.Host != "" {
+		host := cfg.Host
+		if cfg.Port > 0 && cfg.Port != 5432 {
+			host = fmt.Sprintf("%s:%d", host, cfg.Port)
+		}
+		if cfg.Database != "" {
+			return fmt.Sprintf("%s · %s", host, cfg.Database)
+		}
+		return host
+	}
+	return ""
 }
 
 // QueryResult is a bounded result from the read-only SQL console.
