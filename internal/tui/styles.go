@@ -47,12 +47,11 @@ var (
 				BorderStyle(lipgloss.ThickBorder()).BorderLeft(true).BorderForeground(colorCyan).Padding(1, 2)
 	commandPaletteStyle = lipgloss.NewStyle().Background(colorPanel).
 				BorderStyle(lipgloss.NormalBorder()).BorderLeft(true).BorderForeground(colorBorder).Padding(1, 2)
+	queuedPromptStyle = lipgloss.NewStyle().Foreground(colorMuted).Background(colorPanelAlt).
+				BorderStyle(lipgloss.NormalBorder()).BorderLeft(true).BorderForeground(colorBorder).Padding(0, 2)
 	selectedCommandStyle       = lipgloss.NewStyle().Bold(true).Foreground(colorCyan)
 	selectedCommandDetailStyle = lipgloss.NewStyle().Foreground(colorInk)
 	disconnectedStyle          = lipgloss.NewStyle().Foreground(colorAmber)
 	bootQueryStyle             = lipgloss.NewStyle().Bold(true).Foreground(colorBlue)
 	bootShiftStyle             = lipgloss.NewStyle().Bold(true).Foreground(colorCyan)
-	queuedPromptStyle          = lipgloss.NewStyle().Background(colorPanel).Foreground(colorAmber).
-					BorderStyle(lipgloss.NormalBorder()).BorderLeft(true).BorderForeground(colorAmber).Padding(0, 1)
 )
-

@@ -79,29 +79,30 @@ type Model struct {
 	width  int
 	height int
 
-	chat       textarea.Model
-	chatLog    []chatMessage
-	slashIndex int
-	chatScroll int
-	pendingCmd string
-	pendingAsk string
-	chatBusy   bool
-	chatSince  time.Time
-	chatModel  string
-	chatQueue  []string
-	dsn        textinput.Model
-	sql        textarea.Model
-	dbSQL      textarea.Model
-	confirm    textinput.Model
-	dialect    int
-	liveSchema bool
-	connection string
-	dbTab      int
-	writeMode  bool
-	workspace  *app.DatabaseWorkspace
-	changePlan app.ChangePlan
-	query      *app.QueryResult
-	change     *app.ChangeResult
+	chat         textarea.Model
+	chatLog      []chatMessage
+	slashIndex   int
+	chatScroll   int
+	paletteDraft string
+	pendingCmd   string
+	pendingAsk   string
+	chatBusy     bool
+	chatSince    time.Time
+	chatModel    string
+	chatQueue    []string
+	dsn          textinput.Model
+	sql          textarea.Model
+	dbSQL        textarea.Model
+	confirm      textinput.Model
+	dialect      int
+	liveSchema   bool
+	connection   string
+	dbTab        int
+	writeMode    bool
+	workspace    *app.DatabaseWorkspace
+	changePlan   app.ChangePlan
+	query        *app.QueryResult
+	change       *app.ChangeResult
 
 	viewport  viewport.Model
 	resultTab int
@@ -541,6 +542,9 @@ func (m Model) updateHome(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.helpOpen = true
 		return m, nil
 	case "ctrl+p":
+		if !strings.HasPrefix(strings.TrimSpace(m.chat.Value()), "/") {
+			m.paletteDraft = m.chat.Value()
+		}
 		m.chat.SetValue("/")
 		m.slashIndex = 0
 		return m, m.chat.Focus()
@@ -590,7 +594,8 @@ func (m Model) updateHome(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, m.chat.Focus()
 		}
 		if len(matches) > 0 {
-			m.chat.Reset()
+			m.chat.SetValue(m.paletteDraft)
+			m.paletteDraft = ""
 			m.slashIndex = 0
 			return m, nil
 		}
@@ -627,6 +632,7 @@ func (m Model) submitChat() (tea.Model, tea.Cmd) {
 	m.chat.Reset()
 	m.slashIndex = 0
 	m.chatScroll = 0
+	m.paletteDraft = ""
 	m.err = nil
 	lower := strings.ToLower(input)
 	if strings.HasPrefix(lower, "/") {
@@ -1327,23 +1333,18 @@ func (m Model) shellWidth() int {
 }
 
 func (m Model) header(width int) string {
-	product := brandStyle.Render("QUERYSHIFT")
-	right := dangerBadgeStyle.Render("NO DATABASE")
+	product := brandStyle.Render("queryshift") + mutedStyle.Render("  /  "+strings.ToLower(screenName(m.screen)))
+	right := disconnectedStyle.Render("○ database required")
 	if m.workspace != nil {
-		right = badgeStyle.Render("READ MODE")
+		right = goodStyle.Render("● "+m.workspace.Database) + mutedStyle.Render("  ·  read")
 	}
 	if m.writeMode {
-		right = dangerBadgeStyle.Render("WRITE ARMED")
+		right = warnStyle.Render("● " + m.workspace.Database + "  ·  write armed")
 	}
-	if width >= 110 {
-		product += mutedStyle.Render("  /  AGENTIC DATABASE WORKBENCH")
-		if m.workspace != nil {
-			right = mutedStyle.Render(m.workspace.Database+" @ "+m.workspace.Host) + "  " + right
-		} else {
-			right = mutedStyle.Render("CONNECT REQUIRED") + "  " + right
-		}
+	if width >= 110 && m.workspace != nil {
+		right = mutedStyle.Render(fitCompactHost(m.workspace.Host, 40)) + "  " + right
 	}
-	return "\n" + spread(product, right, width) + "\n" + rule(width)
+	return "\n" + spread(product, right, width) + "\n"
 }
 
 func (m Model) body(width, height int) string {
@@ -1816,9 +1817,9 @@ func (m Model) footer(width int) string {
 	switch m.screen {
 	case screenHome:
 		if m.chatBusy {
-			help = helpKeys("esc", "cancel agent", "/", "commands", "f1", "help", "ctrl+c", "quit")
+			help = helpKeys("esc", "interrupt", "f1", "help", "ctrl+c", "quit")
 		} else {
-			help = helpKeys("/", "commands", "↑/↓", "choose", "enter", "run", "f1", "help", "ctrl+c", "quit")
+			help = helpKeys("pgup/pgdn", "history", "f1", "help", "ctrl+c", "quit")
 		}
 	case screenConnect:
 		help = helpKeys("cmd/ctrl+v", "paste", "ctrl+e", "from env", "enter", "connect", "f1", "help", "esc", "back")
@@ -1841,9 +1842,9 @@ func (m Model) footer(width int) string {
 		switch m.screen {
 		case screenHome:
 			if m.chatBusy {
-				help = helpKeys("esc", "cancel", "/", "commands", "f1", "help")
+				help = helpKeys("esc", "interrupt", "f1", "help")
 			} else {
-				help = helpKeys("enter", "send", "/", "commands", "f1", "help")
+				help = helpKeys("f1", "help", "ctrl+c", "quit")
 			}
 		case screenConnect:
 			help = helpKeys("ctrl+v", "paste", "enter", "connect", "esc", "back")
@@ -1892,8 +1893,10 @@ func (m Model) helpView(width int) string {
 		content := overlineStyle.Render("KEYBOARD REFERENCE") + "\n" +
 			titleStyle.Render("One conversation, a few shortcuts") + "\n\n" +
 			helpRow("Enter", "Send from the composer", inside) + "\n" +
-			helpRow("/", "Open command palette", inside) + "\n" +
+			helpRow("Ctrl+J", "Insert a new line", inside) + "\n" +
+			helpRow("Ctrl+P / /", "Open command palette", inside) + "\n" +
 			helpRow("↑ / ↓", "Choose a command", inside) + "\n" +
+			helpRow("PgUp / PgDn", "Browse conversation", inside) + "\n" +
 			helpRow("Cmd/Ctrl+V", "Paste connection", inside) + "\n" +
 			helpRow("Ctrl+D / L / R", "Dialect / live / run", inside) + "\n" +
 			helpRow("F1 / Ctrl+H", "Toggle help", inside) + "\n\n" +
@@ -1903,15 +1906,18 @@ func (m Model) helpView(width int) string {
 	leftWidth := (inside - 3) / 2
 	left := overlineStyle.Render("CHAT") + "\n" +
 		helpRow("Enter", "Send from the composer", leftWidth) + "\n" +
-		helpRow("/", "Open command palette", leftWidth) + "\n" +
+		helpRow("Ctrl+J", "Insert a new line", leftWidth) + "\n" +
+		helpRow("Ctrl+P / /", "Open command palette", leftWidth) + "\n" +
 		helpRow("↑ / ↓", "Choose a command", leftWidth) + "\n" +
+		helpRow("PgUp / PgDn", "Browse conversation", leftWidth) + "\n" +
 		helpRow("Esc", "Go back or cancel", leftWidth) + "\n" +
 		helpRow("F1 / Ctrl+H", "Toggle this help", leftWidth) + "\n\n" +
 		overlineStyle.Render("COMMANDS") + "\n" +
 		helpRow("/connect", "Verify a live database", leftWidth) + "\n" +
 		helpRow("/schema /erd", "Browse live structure", leftWidth) + "\n" +
 		helpRow("/query /inspect", "Work with the database", leftWidth) + "\n" +
-		helpRow("/modernize", "Modernize with live schema", leftWidth) + "\n\n" +
+		helpRow("/modernize", "Modernize with live schema", leftWidth) + "\n" +
+		helpRow("/new /clear", "Reset the conversation", leftWidth) + "\n\n" +
 		overlineStyle.Render("DATABASE") + "\n" +
 		helpRow("Cmd/Ctrl+V", "Paste connection URL", leftWidth) + "\n" +
 		helpRow("Ctrl+E", "Load DATABASE_URL", leftWidth)
@@ -1939,7 +1945,7 @@ func helpRow(key, description string, width int) string {
 }
 
 func (m Model) modelName() string {
-	if configured := strings.TrimSpace(os.Getenv("QUERYSHIFT_AGENT_MODEL")); configured != "" {
+	if configured := firstEnvironment("QUERYSHIFT_AI_MODEL", "QUERYSHIFT_AGENT_MODEL"); configured != "" {
 		return configured
 	}
 	return "deepseek.v3.2"
