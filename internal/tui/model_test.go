@@ -452,3 +452,73 @@ func TestDatabaseWorkspaceFitsMinimumTerminal(t *testing.T) {
 		}
 	}
 }
+
+func TestDatabaseLoadingStreamsProgressAndLogs(t *testing.T) {
+	m := testModel()
+	m.screen = screenConnect
+	neonConn := "postgresql://alex:pwd@ep-cool-unit.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require"
+	m.dsn.SetValue(neonConn)
+
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	loading := updated.(Model)
+	if loading.screen != screenDatabaseLoading || cmd == nil {
+		t.Fatalf("expected screenDatabaseLoading, got %d", loading.screen)
+	}
+
+	// Send streaming progress message
+	updatesCh := make(chan app.DatabaseLoadUpdate, 2)
+	updated, _ = loading.Update(databaseProgressMsg{
+		id:      loading.jobID,
+		refresh: false,
+		stage:   "PROBING ENGINE",
+		log:     "Querying server version, settings, and provider capabilities",
+		updates: updatesCh,
+	})
+	progressModel := updated.(Model)
+	if progressModel.loadStage != "PROBING ENGINE" {
+		t.Fatalf("expected stage PROBING ENGINE, got %q", progressModel.loadStage)
+	}
+
+	// Verify rendering contains logs and serverless hint
+	view := progressModel.View().Content
+	for _, want := range []string{"LIVE CONNECTION LOGS", "PROBING ENGINE", "Querying server version", "Serverless database detected"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("view missing %q:\n%s", want, view)
+		}
+	}
+
+	// Send finished message
+	ws := &app.DatabaseWorkspace{Host: "ep-cool-unit.c-6.us-east-2.aws.neon.tech", Database: "neondb"}
+	updated, _ = progressModel.Update(databaseLoadedMsg{
+		id:      loading.jobID,
+		refresh: false,
+		result:  ws,
+	})
+	doneModel := updated.(Model)
+	if doneModel.screen != screenDatabase || doneModel.workspace == nil {
+		t.Fatalf("expected screenDatabase, got %d", doneModel.screen)
+	}
+}
+
+func TestDatabaseLoadingEscCancelsSafely(t *testing.T) {
+	m := testModel()
+	m.screen = screenConnect
+	neonConn := "postgresql://alex:pwd@ep-cool-unit.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require"
+	m.dsn.SetValue(neonConn)
+
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	loading := updated.(Model)
+	if loading.screen != screenDatabaseLoading {
+		t.Fatalf("expected screenDatabaseLoading, got %d", loading.screen)
+	}
+
+	// Press Esc while loading
+	updated, _ = loading.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	canceled := updated.(Model)
+	if canceled.screen != screenConnect {
+		t.Fatalf("expected screenConnect after Esc, got %d", canceled.screen)
+	}
+	if canceled.dsn.Value() != neonConn {
+		t.Fatalf("expected connection string preserved in dsn, got %q", canceled.dsn.Value())
+	}
+}
