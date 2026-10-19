@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -144,6 +145,71 @@ func TestBusyAgentAcceptsOneQueuedPrompt(t *testing.T) {
 	}
 	if view := got.homeView(120, 32); !strings.Contains(view, "1 queued") {
 		t.Fatalf("queue state is not visible:\n%s", view)
+	}
+}
+
+func TestComposerSupportsOpenCodeStyleCommandPaletteAndMultilineDrafts(t *testing.T) {
+	m := testModel()
+	m.chat.SetValue("keep this draft")
+
+	updated, _ := m.Update(tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl})
+	palette := updated.(Model)
+	if palette.chat.Value() != "/" {
+		t.Fatalf("ctrl+p should open the command palette, input=%q", palette.chat.Value())
+	}
+	view := palette.homeView(120, 32)
+	for _, want := range []string{"/connect", "/new", "Database", "Session"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("command palette missing %q:\n%s", want, view)
+		}
+	}
+	updated, _ = palette.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
+	restored := updated.(Model)
+	if restored.chat.Value() != "keep this draft" {
+		t.Fatalf("closing the palette should restore the draft, input=%q", restored.chat.Value())
+	}
+
+	restored.chat.SetValue("first line")
+	updated, _ = restored.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
+	multiline := updated.(Model)
+	multiline.chat.InsertString("second line")
+	if multiline.chat.Value() != "first line\nsecond line" {
+		t.Fatalf("ctrl+j should insert a newline, input=%q", multiline.chat.Value())
+	}
+}
+
+func TestNewCommandClearsConversationButKeepsDatabase(t *testing.T) {
+	m := testModel()
+	m.workspace = &app.DatabaseWorkspace{Host: "example.test", Database: "app"}
+	m.chatLog = []chatMessage{{role: "you", text: "old prompt"}, {role: "queryshift", text: "old answer"}}
+	m.chatQueue = []string{"queued"}
+	m.chatScroll = 8
+
+	updated, _ := m.executeSlash("/new")
+	got := updated.(Model)
+	if len(got.chatLog) != 0 || len(got.chatQueue) != 0 || got.chatScroll != 0 {
+		t.Fatalf("new session did not clear conversation state: log=%v queue=%v scroll=%d", got.chatLog, got.chatQueue, got.chatScroll)
+	}
+	if got.workspace == nil || got.workspace.Database != "app" {
+		t.Fatal("new conversation should retain the verified database workspace")
+	}
+}
+
+func TestTranscriptCanPageAwayFromLatest(t *testing.T) {
+	m := testModel()
+	for i := 0; i < 20; i++ {
+		m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: fmt.Sprintf("answer %02d\nline two", i)})
+	}
+
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyPgUp})
+	older := updated.(Model)
+	if older.chatScroll == 0 || !strings.Contains(older.homeView(100, 28), "older messages") {
+		t.Fatal("page up should move the transcript away from the latest response")
+	}
+	updated, _ = older.Update(tea.KeyPressMsg{Code: tea.KeyEnd})
+	latest := updated.(Model)
+	if latest.chatScroll != 0 {
+		t.Fatalf("end should return to latest, scroll=%d", latest.chatScroll)
 	}
 }
 
