@@ -38,8 +38,9 @@ type Dependencies struct {
 	Inspect         func(context.Context, string, int) (*app.Inspection, error)
 	Modernize       func(context.Context, app.ModernizeRequest) (*app.ModernizationResult, error)
 	ModernizeStream func(context.Context, app.ModernizeRequest) <-chan app.ModernizationUpdate
-	LoadDatabase    func(context.Context, string) (*app.DatabaseWorkspace, error)
-	Query           func(context.Context, string, string) (*app.QueryResult, error)
+	LoadDatabase       func(context.Context, string) (*app.DatabaseWorkspace, error)
+	LoadDatabaseStream func(context.Context, string) <-chan app.DatabaseLoadUpdate
+	Query              func(context.Context, string, string) (*app.QueryResult, error)
 	Apply           func(context.Context, string, string, string) (*app.ChangeResult, error)
 	Chat            func(context.Context, app.ChatRequest) (*app.ChatResponse, error)
 }
@@ -107,15 +108,19 @@ type Model struct {
 	viewport  viewport.Model
 	resultTab int
 	inspect   *app.Inspection
-	modern    *app.ModernizationResult
-	agentRun  []app.AgentRunEvent
-	err       error
-	cancel    context.CancelFunc
-	pulse     int
-	jobID     int
-	booting   bool
-	bootStep  int
-	helpOpen  bool
+	modern       *app.ModernizationResult
+	agentRun     []app.AgentRunEvent
+	err          error
+	cancel       context.CancelFunc
+	pulse        int
+	jobID        int
+	booting      bool
+	bootStep     int
+	helpOpen     bool
+	loadStage    string
+	loadLogs     []string
+	loadSince    time.Time
+	loadHostHint string
 }
 
 type inspectFinishedMsg struct {
@@ -141,6 +146,14 @@ type databaseLoadedMsg struct {
 	refresh bool
 	result  *app.DatabaseWorkspace
 	err     error
+}
+
+type databaseProgressMsg struct {
+	id      int
+	refresh bool
+	stage   string
+	log     string
+	updates <-chan app.DatabaseLoadUpdate
 }
 
 type queryFinishedMsg struct {
@@ -190,8 +203,24 @@ func NewModel(ctx context.Context, deps Dependencies) Model {
 			}
 		}
 	}
+	customLoad := deps.LoadDatabase
 	if deps.LoadDatabase == nil {
 		deps.LoadDatabase = app.LoadDatabase
+	}
+	if deps.LoadDatabaseStream == nil {
+		if customLoad == nil {
+			deps.LoadDatabaseStream = app.StreamLoadDatabase
+		} else {
+			deps.LoadDatabaseStream = func(ctx context.Context, conn string) <-chan app.DatabaseLoadUpdate {
+				ch := make(chan app.DatabaseLoadUpdate, 1)
+				go func() {
+					defer close(ch)
+					res, err := customLoad(ctx, conn)
+					ch <- app.DatabaseLoadUpdate{Result: res, Err: err}
+				}()
+				return ch
+			}
+		}
 	}
 	if deps.Query == nil {
 		deps.Query = app.RunReadQuery
@@ -308,11 +337,27 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenModernizerResult
 		m.refreshResultViewport()
 		return m, nil
+	case databaseProgressMsg:
+		if msg.id != m.jobID {
+			return m, nil
+		}
+		if msg.stage != "" {
+			m.loadStage = msg.stage
+		}
+		if msg.log != "" {
+			if len(m.loadLogs) == 0 || m.loadLogs[len(m.loadLogs)-1] != msg.log {
+				m.loadLogs = append(m.loadLogs, msg.log)
+			}
+		}
+		return m, m.databaseStreamCmd(msg.id, msg.refresh, msg.updates)
 	case databaseLoadedMsg:
 		if msg.id != m.jobID {
 			return m, nil
 		}
 		m.cancel = nil
+		m.loadStage = ""
+		m.loadLogs = nil
+		m.loadHostHint = ""
 		if msg.err != nil {
 			m.err = msg.err
 			if msg.refresh && m.workspace != nil {
@@ -517,6 +562,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.jobID++
 			m.cancel = nil
+			m.loadStage = ""
+			m.loadLogs = nil
+			m.loadHostHint = ""
 			if m.workspace != nil {
 				m.screen = screenDatabase
 			} else {
@@ -821,10 +869,15 @@ func (m Model) updateConnect(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.err = nil
 		m.dsn.Blur()
 		m.screen = screenDatabaseLoading
+		m.loadStage = "Connecting"
+		m.loadLogs = []string{"Connecting to database endpoint…"}
+		m.loadSince = time.Now()
+		m.loadHostHint = app.FormatHostDisplay(value)
 		workCtx, cancel := context.WithCancel(m.ctx)
 		m.cancel = cancel
 		m.jobID++
-		return m, tea.Batch(m.loadDatabaseCmd(workCtx, m.jobID, value, false), pulse())
+		updates := m.deps.LoadDatabaseStream(workCtx, value)
+		return m, tea.Batch(m.databaseStreamCmd(m.jobID, false, updates), pulse())
 	}
 	var cmd tea.Cmd
 	m.dsn, cmd = m.dsn.Update(key)
@@ -949,7 +1002,14 @@ func (m Model) updateDatabase(key tea.KeyPressMsg, message tea.Msg) (tea.Model, 
 			m.err = nil
 			m.jobID++
 			m.screen = screenDatabaseLoading
-			return m, tea.Batch(m.loadDatabaseCmd(m.ctx, m.jobID, m.connection, true), pulse())
+			m.loadStage = "Refreshing"
+			m.loadLogs = []string{"Refreshing database schema…"}
+			m.loadSince = time.Now()
+			m.loadHostHint = app.FormatHostDisplay(m.connection)
+			workCtx, cancel := context.WithCancel(m.ctx)
+			m.cancel = cancel
+			updates := m.deps.LoadDatabaseStream(workCtx, m.connection)
+			return m, tea.Batch(m.databaseStreamCmd(m.jobID, true, updates), pulse())
 		}
 		statement := strings.TrimSpace(m.dbSQL.Value())
 		if statement == "" {
@@ -1066,6 +1126,19 @@ func (m Model) modernizeCmd(id int, updates <-chan app.ModernizationUpdate) tea.
 			return modernizeProgressMsg{id: id, event: *update.Event, updates: updates}
 		}
 		return modernizeFinishedMsg{id: id, result: update.Result, err: update.Err}
+	}
+}
+
+func (m Model) databaseStreamCmd(id int, refresh bool, updates <-chan app.DatabaseLoadUpdate) tea.Cmd {
+	return func() tea.Msg {
+		update, ok := <-updates
+		if !ok {
+			return databaseLoadedMsg{id: id, refresh: refresh, err: fmt.Errorf("connection stream closed unexpectedly")}
+		}
+		if update.Result != nil || update.Err != nil {
+			return databaseLoadedMsg{id: id, refresh: refresh, result: update.Result, err: update.Err}
+		}
+		return databaseProgressMsg{id: id, refresh: refresh, stage: update.Stage, log: update.Log, updates: updates}
 	}
 }
 
@@ -1370,7 +1443,7 @@ func (m Model) body(width, height int) string {
 		case screenAbout:
 			body = m.aboutView(width)
 		case screenDatabaseLoading:
-			body = m.workingView("Loading database workspace", "Reading tables, columns, indexes, foreign keys, and ER relationships")
+			body = m.databaseLoadingView(width)
 		case screenDatabase:
 			body = m.databaseView(width, height)
 		case screenWriteUnlock:
@@ -1788,6 +1861,69 @@ func stringData(data map[string]any, key string) string {
 func numberData(data map[string]any, key string) float64 {
 	value, _ := data[key].(float64)
 	return value
+}
+
+func (m Model) databaseLoadingView(width int) string {
+	frames := []string{"◐", "◓", "◑", "◒"}
+	indicator := frames[m.pulse%len(frames)]
+	panelWidth := min(104, max(58, width))
+	innerWidth := panelWidth - panelStyle.GetHorizontalFrameSize()
+
+	elapsed := time.Duration(0)
+	if !m.loadSince.IsZero() {
+		elapsed = time.Since(m.loadSince)
+	}
+	timerStr := fmt.Sprintf("%02d:%02d", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
+
+	var b strings.Builder
+	stageText := m.loadStage
+	if stageText == "" {
+		stageText = "CONNECTING"
+	}
+	title := "Connecting to database"
+	if m.workspace != nil {
+		title = "Refreshing database workspace"
+	}
+
+	headerLeft := goodStyle.Render(indicator+"  ") + titleStyle.Render(title) + "  " + badgeStyle.Render(strings.ToUpper(stageText))
+	headerRight := mutedStyle.Render(timerStr)
+	b.WriteString(spread(headerLeft, headerRight, innerWidth))
+	b.WriteString("\n" + mutedStyle.Render("Establishing read-only connection, probing capabilities, and introspecting schema"))
+
+	if m.loadHostHint != "" {
+		b.WriteString("\n" + subtitleStyle.Render("Target: "+fit(m.loadHostHint, max(24, innerWidth-8))))
+	}
+
+	b.WriteString("\n\n" + overlineStyle.Render("LIVE CONNECTION LOGS") + "\n")
+
+	logs := m.loadLogs
+	if len(logs) > 8 {
+		logs = logs[len(logs)-8:]
+	}
+	if len(logs) == 0 {
+		b.WriteString(mutedStyle.Render("Initializing connection…"))
+	} else {
+		for i, logLine := range logs {
+			isLast := (i == len(logs)-1)
+			var icon string
+			if isLast {
+				icon = goodStyle.Render("●")
+			} else {
+				icon = lipgloss.NewStyle().Foreground(colorCyan).Render("✓")
+			}
+			line := fmt.Sprintf("%s  %s", icon, logLine)
+			b.WriteString("\n" + fit(line, max(24, innerWidth)))
+		}
+	}
+
+	hostLower := strings.ToLower(m.loadHostHint + " " + m.connection)
+	isServerless := strings.Contains(hostLower, "neon.tech") || strings.Contains(hostLower, "pooler") || strings.Contains(hostLower, "supabase") || strings.Contains(hostLower, "cockroach")
+	if elapsed >= 3*time.Second || isServerless {
+		b.WriteString("\n\n" + lipgloss.NewStyle().Foreground(colorAmber).Render("⚡ Serverless database detected. If compute was suspended, wake-up takes 3–12s."))
+	}
+
+	b.WriteString("\n\n" + warnStyle.Render("Esc cancels safely") + mutedStyle.Render("  ·  connection string is preserved"))
+	return renderPanel(panelStyle, panelWidth, b.String())
 }
 
 func (m Model) workingView(title, detail string) string {
