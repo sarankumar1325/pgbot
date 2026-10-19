@@ -47,6 +47,9 @@ type Target struct {
 
 const maxConns = 4
 
+// ConnectProgressFunc receives human-readable progress updates during connection establishment.
+type ConnectProgressFunc func(stage string, detail string)
+
 // Connect probes the server once, then builds a read-only pool whose sessions
 // are pinned safe. The read-only GUARANTEE is the role (pg_monitor, no write
 // grants); the session settings here are defence in depth, not a boundary.
@@ -54,11 +57,16 @@ func Connect(ctx context.Context, connString string) (*Target, error) {
 	return ConnectDB(ctx, connString, "")
 }
 
+// ConnectWithProgress connects to a database while reporting progress to onProgress.
+func ConnectWithProgress(ctx context.Context, connString string, onProgress ConnectProgressFunc) (*Target, error) {
+	return connectProgress(ctx, connString, "", "", onProgress)
+}
+
 // ConnectDB is Connect with the target database overridden (for --all-databases):
 // the connString supplies host/auth/TLS and `database` names which database on
 // that server to inspect. Empty database keeps the connString's own.
 func ConnectDB(ctx context.Context, connString, database string) (*Target, error) {
-	return connect(ctx, connString, database, "")
+	return connectProgress(ctx, connString, database, "", nil)
 }
 
 // ConnectDBAt is ConnectDB with the host overridden as well (for
@@ -66,10 +74,17 @@ func ConnectDB(ctx context.Context, connString, database string) (*Target, error
 // which cluster member to reach. The TLS server name follows the host, so
 // sslmode=verify-full validates that member's own certificate.
 func ConnectDBAt(ctx context.Context, connString, database, host string) (*Target, error) {
-	return connect(ctx, connString, database, host)
+	return connectProgress(ctx, connString, database, host, nil)
 }
 
 func connect(ctx context.Context, connString, database, host string) (*Target, error) {
+	return connectProgress(ctx, connString, database, host, nil)
+}
+
+func connectProgress(ctx context.Context, connString, database, host string, onProgress ConnectProgressFunc) (*Target, error) {
+	if onProgress != nil {
+		onProgress("Configuring", "Parsing connection string and TLS parameters")
+	}
 	cfg, err := pggo.ParseConfig(connString)
 	if err != nil {
 		return nil, fmt.Errorf("parse connection string: %w", err)
@@ -102,13 +117,34 @@ func connect(ctx context.Context, connString, database, host string) (*Target, e
 		}
 	}
 
+	if onProgress != nil {
+		targetHost := cfg.Host
+		if cfg.Port > 0 {
+			targetHost = fmt.Sprintf("%s:%d", targetHost, cfg.Port)
+		}
+		detail := fmt.Sprintf("Dialing %s (database %s)", targetHost, cfg.Database)
+		hostLower := strings.ToLower(cfg.Host)
+		if strings.Contains(hostLower, "neon.tech") || strings.Contains(hostLower, "pooler") {
+			detail += " [Serverless pooler]"
+		}
+		onProgress("Dialing", detail)
+	}
+
 	// Probe capabilities + pooler on a throwaway connection first, so AfterConnect
 	// applies only the GUCs this server understands. (Behind a transaction pooler
 	// no protocol switch is needed: pgGo only uses the unnamed statement, parsed
 	// and executed within one Sync, which poolers route as a unit.)
-	caps, pooler, probePID, err := probe(ctx, cfg.Copy())
+	caps, pooler, probePID, err := probeWithProgress(ctx, cfg.Copy(), onProgress)
 	if err != nil {
 		return nil, err
+	}
+
+	if onProgress != nil {
+		poolerDesc := "direct"
+		if pooler.Detected {
+			poolerDesc = "transaction pooler"
+		}
+		onProgress("Creating pool", fmt.Sprintf("Probed %s (%s, %s); initializing read-only pool", caps.Database, caps.Provider, poolerDesc))
 	}
 
 	// Track our own backend PIDs so collectors can exclude every queryshift connection
@@ -222,6 +258,13 @@ func applySessionSetup(ctx context.Context, c *pggo.Conn, caps Capabilities) err
 // the system identifier in one round trip (with a best-effort fallback for the
 // identifier, which needs elevated read access on some managed providers).
 func probe(ctx context.Context, cc *pggo.Config) (Capabilities, PoolerInfo, uint32, error) {
+	return probeWithProgress(ctx, cc, nil)
+}
+
+func probeWithProgress(ctx context.Context, cc *pggo.Config, onProgress ConnectProgressFunc) (Capabilities, PoolerInfo, uint32, error) {
+	if onProgress != nil {
+		onProgress("Connecting", "Establishing TCP socket & negotiating TLS handshake")
+	}
 	c, err := pggo.ConnectConfig(ctx, cc)
 	if err != nil {
 		return Capabilities{}, PoolerInfo{}, 0, fmt.Errorf("connect: %w", err)
@@ -229,8 +272,15 @@ func probe(ctx context.Context, cc *pggo.Config) (Capabilities, PoolerInfo, uint
 	defer c.Close()
 	probePID := c.PID()
 
+	if onProgress != nil {
+		onProgress("Detecting pooler", "Testing prepared statements and session persistence")
+	}
 	// Detect the pooler first (named prepared statements, session persistence).
 	pooler := detectPooler(ctx, c, cc)
+
+	if onProgress != nil {
+		onProgress("Probing engine", "Querying server version, settings, and provider capabilities")
+	}
 
 	var caps Capabilities
 	var mk providerMarkers
@@ -263,6 +313,10 @@ func probe(ctx context.Context, cc *pggo.Config) (Capabilities, PoolerInfo, uint
 	caps.RecoveryChecked = true // the probe scan succeeded, so InRecovery is trustworthy
 	mk.Host, mk.VersionText = cc.Host, caps.VersionText
 	caps.Provider = detectProvider(mk)
+
+	if onProgress != nil {
+		onProgress("Probing extensions", "Querying installed extensions and schema namespaces")
+	}
 
 	// system_identifier makes the baseline fingerprint survive a restore/rename;
 	// it needs pg_monitor/superuser on some providers, so it's best-effort.
