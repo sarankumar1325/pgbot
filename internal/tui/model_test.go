@@ -522,3 +522,121 @@ func TestDatabaseLoadingEscCancelsSafely(t *testing.T) {
 		t.Fatalf("expected connection string preserved in dsn, got %q", canceled.dsn.Value())
 	}
 }
+
+func TestChatTableMentionAutocomplete(t *testing.T) {
+	m := testModel()
+	m.workspace = &app.DatabaseWorkspace{
+		Host:     "example.test",
+		Database: "app",
+		Schema: erd.Schema{
+			Tables: []erd.Table{
+				{Schema: "public", Name: "users", Columns: []erd.Column{{Name: "id", PK: true}, {Name: "email"}}},
+				{Schema: "public", Name: "orders", Columns: []erd.Column{{Name: "id", PK: true}, {Name: "total"}}},
+			},
+		},
+	}
+
+	// Type @u in the chat composer
+	m.chat.SetValue("tell me about @u")
+	matches := m.atMatches()
+	if len(matches) != 1 || matches[0].Name != "users" {
+		t.Fatalf("expected 1 match for @u, got %v", matches)
+	}
+
+	view := m.homeView(120, 32)
+	for _, want := range []string{"TABLE CONTEXT", "@users"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("atPalette view missing %q:\n%s", want, view)
+		}
+	}
+
+	// Press Tab to complete @users
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	completed := updated.(Model)
+	if completed.chat.Value() != "tell me about @users " {
+		t.Fatalf("expected completed table reference, got %q", completed.chat.Value())
+	}
+}
+
+func TestChatPromptHistoryNavigation(t *testing.T) {
+	m := testModel()
+	m.workspace = &app.DatabaseWorkspace{Host: "example.test", Database: "app"}
+
+	// Submit prompt 1
+	m.chat.SetValue("show database slow queries")
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(Model)
+
+	// Submit prompt 2
+	m.chat.SetValue("explain users table indexes")
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(Model)
+
+	// Currently empty input. Press Up to recall latest prompt
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	m = updated.(Model)
+	if m.chat.Value() != "explain users table indexes" {
+		t.Fatalf("expected prompt 2 on Up arrow, got %q", m.chat.Value())
+	}
+
+	// Press Up again to recall older prompt
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	m = updated.(Model)
+	if m.chat.Value() != "show database slow queries" {
+		t.Fatalf("expected prompt 1 on second Up arrow, got %q", m.chat.Value())
+	}
+
+	// Press Down to return to prompt 2
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	m = updated.(Model)
+	if m.chat.Value() != "explain users table indexes" {
+		t.Fatalf("expected prompt 2 on Down arrow, got %q", m.chat.Value())
+	}
+
+	// Press Down again to return to empty draft
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	m = updated.(Model)
+	if m.chat.Value() != "" {
+		t.Fatalf("expected empty draft on Down past newest, got %q", m.chat.Value())
+	}
+}
+
+func TestChatInlineQueryMode(t *testing.T) {
+	m := testModel()
+	m.workspace = &app.DatabaseWorkspace{Host: "example.test", Database: "app"}
+	m.connection = "postgresql://owner:secret@example.test/db"
+
+	// Type inline query with !
+	m.chat.SetValue("!SELECT 1 AS num")
+	view := m.homeView(120, 32)
+	if !strings.Contains(view, "SQL RUNNER") {
+		t.Fatalf("expected SQL RUNNER badge for ! prefix, view:\n%s", view)
+	}
+
+	// Submit inline query
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(Model)
+	if cmd == nil || !m.chatBusy {
+		t.Fatal("expected query execution cmd to be batched")
+	}
+}
+
+func TestChatCtrlUAndCtrlCClearing(t *testing.T) {
+	m := testModel()
+	m.chat.SetValue("draft that should be cleared")
+
+	// Ctrl+U clears draft
+	updated, _ := m.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
+	cleared := updated.(Model)
+	if cleared.chat.Value() != "" {
+		t.Fatalf("ctrl+u should clear draft, got %q", cleared.chat.Value())
+	}
+
+	// Ctrl+C with non-empty input clears draft without quitting
+	cleared.chat.SetValue("another draft")
+	updated, cmd := cleared.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	clearedAgain := updated.(Model)
+	if cmd != nil || clearedAgain.chat.Value() != "" {
+		t.Fatalf("ctrl+c on non-empty input should clear draft, cmd=%v value=%q", cmd, clearedAgain.chat.Value())
+	}
+}
