@@ -116,11 +116,15 @@ type Model struct {
 	jobID        int
 	booting      bool
 	bootStep     int
-	helpOpen     bool
-	loadStage    string
-	loadLogs     []string
-	loadSince    time.Time
-	loadHostHint string
+	helpOpen      bool
+	loadStage     string
+	loadLogs      []string
+	loadSince     time.Time
+	loadHostHint  string
+	promptHistory []string
+	historyIndex  int
+	historyDraft  string
+	atIndex       int
 }
 
 type inspectFinishedMsg struct {
@@ -245,7 +249,7 @@ func NewModel(ctx context.Context, deps Dependencies) Model {
 	chat.CharLimit = 100_000
 	chat.ShowLineNumbers = false
 	chat.SetWidth(80)
-	chat.SetHeight(3)
+	chat.SetHeight(2)
 	chat.Prompt = "  "
 	chat.Focus()
 
@@ -272,6 +276,7 @@ func NewModel(ctx context.Context, deps Dependencies) Model {
 	return Model{
 		ctx: ctx, deps: deps, screen: screenHome,
 		chat: chat, dsn: dsn, sql: sql, dbSQL: dbSQL, confirm: confirm, viewport: vp, booting: true,
+		historyIndex: -1,
 	}
 }
 
@@ -490,6 +495,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	if key.String() == "ctrl+c" {
+		if m.screen == screenHome && strings.TrimSpace(m.chat.Value()) != "" {
+			m.chat.Reset()
+			m.chat.SetHeight(2)
+			m.slashIndex = 0
+			m.atIndex = 0
+			m.historyIndex = -1
+			m.paletteDraft = ""
+			return m, nil
+		}
 		if m.cancel != nil {
 			m.cancel()
 		}
@@ -585,6 +599,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) updateHome(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	matches := m.slashMatches()
+	atMatches := m.atMatches()
 	switch key.String() {
 	case "?":
 		m.helpOpen = true
@@ -601,16 +616,34 @@ func (m Model) updateHome(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.executeSlash("/new")
-	case "ctrl+j", "alt+enter":
+	case "ctrl+u":
+		m.chat.Reset()
+		m.chat.SetHeight(2)
+		m.slashIndex = 0
+		m.atIndex = 0
+		m.historyIndex = -1
+		m.paletteDraft = ""
+		return m, nil
+	case "ctrl+l":
+		m.chatLog = nil
+		m.chatQueue = nil
+		m.chatScroll = 0
+		return m, nil
+	case "ctrl+j", "alt+enter", "shift+enter", "ctrl+enter":
 		m.chat.InsertString("\n")
+		lines := strings.Count(m.chat.Value(), "\n") + 1
+		targetHeight := max(2, min(5, lines+1))
+		if m.chat.Height() != targetHeight {
+			m.chat.SetHeight(targetHeight)
+		}
 		return m, nil
 	case "pgup":
-		if len(matches) == 0 {
+		if len(matches) == 0 && len(atMatches) == 0 {
 			m.chatScroll += max(3, m.height/3)
 			return m, nil
 		}
 	case "pgdown":
-		if len(matches) == 0 {
+		if len(matches) == 0 && len(atMatches) == 0 {
 			m.chatScroll = max(0, m.chatScroll-max(3, m.height/3))
 			return m, nil
 		}
@@ -624,9 +657,59 @@ func (m Model) updateHome(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.slashIndex = (m.slashIndex + len(matches) - 1) % len(matches)
 			return m, nil
 		}
-	case "down", "tab":
+		if len(atMatches) > 0 {
+			m.atIndex = (m.atIndex + len(atMatches) - 1) % len(atMatches)
+			return m, nil
+		}
+		// Prompt history navigation when single-line or empty
+		if len(m.promptHistory) > 0 && !strings.Contains(m.chat.Value(), "\n") {
+			if m.historyIndex == -1 {
+				m.historyDraft = m.chat.Value()
+				m.historyIndex = len(m.promptHistory) - 1
+			} else if m.historyIndex > 0 {
+				m.historyIndex--
+			}
+			m.chat.SetValue(m.promptHistory[m.historyIndex])
+			return m, nil
+		}
+	case "down":
 		if len(matches) > 0 {
 			m.slashIndex = (m.slashIndex + 1) % len(matches)
+			return m, nil
+		}
+		if len(atMatches) > 0 {
+			m.atIndex = (m.atIndex + 1) % len(atMatches)
+			return m, nil
+		}
+		// Prompt history navigation forward
+		if m.historyIndex >= 0 {
+			if m.historyIndex < len(m.promptHistory)-1 {
+				m.historyIndex++
+				m.chat.SetValue(m.promptHistory[m.historyIndex])
+			} else {
+				m.historyIndex = -1
+				m.chat.SetValue(m.historyDraft)
+				m.historyDraft = ""
+			}
+			return m, nil
+		}
+	case "tab":
+		if len(atMatches) > 0 {
+			if m.completeAtMatch() {
+				return m, nil
+			}
+		}
+		if len(matches) > 0 {
+			m.slashIndex = (m.slashIndex + 1) % len(matches)
+			return m, nil
+		}
+	case "shift+tab":
+		if len(atMatches) > 0 {
+			m.atIndex = (m.atIndex + len(atMatches) - 1) % len(atMatches)
+			return m, nil
+		}
+		if len(matches) > 0 {
+			m.slashIndex = (m.slashIndex + len(matches) - 1) % len(matches)
 			return m, nil
 		}
 	case "esc":
@@ -647,16 +730,39 @@ func (m Model) updateHome(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.slashIndex = 0
 			return m, nil
 		}
+		if m.isAtTriggered() {
+			m.atIndex = 0
+			val := m.chat.Value()
+			if atIdx := strings.LastIndex(val, "@"); atIdx >= 0 {
+				m.chat.SetValue(strings.TrimRight(val[:atIdx], " "))
+			}
+			return m, nil
+		}
+		if strings.TrimSpace(m.chat.Value()) != "" {
+			m.chat.Reset()
+			m.chat.SetHeight(2)
+			m.historyIndex = -1
+			return m, nil
+		}
 	case "enter":
 		if m.chatBusy {
 			queued := strings.TrimSpace(m.chat.Value())
 			if queued == "" || strings.HasPrefix(queued, "/") {
 				return m, nil
 			}
+			if len(m.promptHistory) == 0 || m.promptHistory[len(m.promptHistory)-1] != queued {
+				m.promptHistory = append(m.promptHistory, queued)
+			}
 			m.chatLog = append(m.chatLog, chatMessage{role: "you", text: queued, meta: "queued"})
 			m.chatQueue = append(m.chatQueue, queued)
 			m.chat.Reset()
+			m.chat.SetHeight(2)
 			return m, m.chat.Focus()
+		}
+		if len(atMatches) > 0 {
+			if m.completeAtMatch() {
+				return m, nil
+			}
 		}
 		if len(matches) > 0 && !strings.Contains(strings.TrimPrefix(strings.TrimSpace(m.chat.Value()), "/"), " ") {
 			m.chat.SetValue(matches[min(m.slashIndex, len(matches)-1)].Name)
@@ -665,8 +771,16 @@ func (m Model) updateHome(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.chat, cmd = m.chat.Update(key)
+	lines := strings.Count(m.chat.Value(), "\n") + 1
+	targetHeight := max(2, min(5, lines+1))
+	if m.chat.Height() != targetHeight {
+		m.chat.SetHeight(targetHeight)
+	}
 	if m.slashIndex >= len(m.slashMatches()) {
 		m.slashIndex = 0
+	}
+	if m.atIndex >= len(m.atMatches()) {
+		m.atIndex = 0
 	}
 	return m, cmd
 }
@@ -676,9 +790,16 @@ func (m Model) submitChat() (tea.Model, tea.Cmd) {
 	if input == "" {
 		return m, nil
 	}
+	if len(m.promptHistory) == 0 || m.promptHistory[len(m.promptHistory)-1] != input {
+		m.promptHistory = append(m.promptHistory, input)
+	}
+	m.historyIndex = -1
+	m.historyDraft = ""
 	m.chatLog = append(m.chatLog, chatMessage{role: "you", text: input})
 	m.chat.Reset()
+	m.chat.SetHeight(2)
 	m.slashIndex = 0
+	m.atIndex = 0
 	m.chatScroll = 0
 	m.paletteDraft = ""
 	m.err = nil
@@ -693,11 +814,53 @@ func (m Model) submitChat() (tea.Model, tea.Cmd) {
 		m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "Unknown command. Type / to open the command palette."})
 		return m, m.chat.Focus()
 	}
+	if strings.HasPrefix(input, "!") {
+		querySQL := strings.TrimSpace(strings.TrimPrefix(input, "!"))
+		if querySQL == "" {
+			return m, nil
+		}
+		if m.workspace == nil {
+			m.pendingCmd = "/query"
+			m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "Database connection required to run queries. Connect now; I’ll execute this query right after."})
+			m.chat.Blur()
+			m.screen = screenConnect
+			return m, m.dsn.Focus()
+		}
+		if !app.IsReadQuery(querySQL) {
+			m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "Only read statements (SELECT, EXPLAIN, WITH, SHOW) can be executed inline with !. For modifications, switch to WRITE mode (/query)."})
+			return m, m.chat.Focus()
+		}
+		workCtx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
+		m.cancel = cancel
+		m.chatBusy = true
+		m.chatSince = time.Now()
+		m.jobID++
+		return m, tea.Batch(func() tea.Msg {
+			res, err := m.deps.Query(workCtx, m.connection, querySQL)
+			if err != nil {
+				return chatFinishedMsg{id: m.jobID, response: &app.ChatResponse{Text: "Query failed: " + err.Error(), Model: "sql-runner"}}
+			}
+			var b strings.Builder
+			b.WriteString(fmt.Sprintf("Query executed in %s (returned %d rows", res.Duration.Round(time.Millisecond), len(res.Rows)))
+			if res.Truncated {
+				b.WriteString(", truncated at 100")
+			}
+			b.WriteString("):\n\n")
+			if len(res.Columns) > 0 {
+				b.WriteString("| " + strings.Join(res.Columns, " | ") + " |\n")
+				b.WriteString("|" + strings.Repeat(" --- |", len(res.Columns)) + "\n")
+				for _, row := range res.Rows {
+					b.WriteString("| " + strings.Join(row, " | ") + " |\n")
+				}
+			} else {
+				b.WriteString("No rows returned.")
+			}
+			return chatFinishedMsg{id: m.jobID, response: &app.ChatResponse{Text: b.String(), Model: "sql-runner"}}
+		}, pulse())
+	}
 	switch {
 	case looksLikeSQL(input):
-		if looksLikeSQL(input) {
-			m.sql.SetValue(input)
-		}
+		m.sql.SetValue(input)
 		return m.executeSlash("/modernize")
 	case lower == "connect" || lower == "connect database":
 		return m.executeSlash("/connect")
@@ -739,6 +902,83 @@ func (m Model) startAgentChat(question string) (tea.Model, tea.Cmd) {
 	m.chatSince = time.Now()
 	m.jobID++
 	return m, tea.Batch(m.chatCmd(workCtx, m.jobID, request), pulse())
+}
+
+type tableMatch struct {
+	Name        string
+	Schema      string
+	Description string
+	PK          string
+	ColCount    int
+}
+
+func (m Model) isAtTriggered() bool {
+	val := m.chat.Value()
+	atIdx := strings.LastIndex(val, "@")
+	if atIdx < 0 {
+		return false
+	}
+	if atIdx > 0 {
+		prev := val[atIdx-1]
+		if !(prev == ' ' || prev == '\t' || prev == '\n' || prev == '(' || prev == '[' || prev == '{' || prev == ',') {
+			return false
+		}
+	}
+	token := val[atIdx+1:]
+	return !strings.ContainsAny(token, " \t\n\r,;()")
+}
+
+func (m Model) atMatches() []tableMatch {
+	if m.workspace == nil || !m.isAtTriggered() {
+		return nil
+	}
+	val := m.chat.Value()
+	atIdx := strings.LastIndex(val, "@")
+	token := strings.ToLower(val[atIdx+1:])
+	var matches []tableMatch
+	for _, table := range m.workspace.Schema.Tables {
+		tblLower := strings.ToLower(table.Name)
+		if token == "" || strings.HasPrefix(tblLower, token) || strings.Contains(tblLower, token) {
+			pk := ""
+			var colNames []string
+			for _, c := range table.Columns {
+				if c.PK && pk == "" {
+					pk = c.Name
+				}
+				colNames = append(colNames, c.Name)
+			}
+			desc := strings.Join(colNames, ", ")
+			if len(desc) > 36 {
+				desc = desc[:33] + "…"
+			}
+			matches = append(matches, tableMatch{
+				Name:        table.Name,
+				Schema:      table.Schema,
+				Description: desc,
+				PK:          pk,
+				ColCount:    len(table.Columns),
+			})
+		}
+	}
+	return matches
+}
+
+func (m *Model) completeAtMatch() bool {
+	matches := m.atMatches()
+	if len(matches) == 0 {
+		return false
+	}
+	selected := min(m.atIndex, len(matches)-1)
+	match := matches[selected]
+	val := m.chat.Value()
+	atIdx := strings.LastIndex(val, "@")
+	if atIdx >= 0 {
+		newVal := val[:atIdx] + "@" + match.Name + " "
+		m.chat.SetValue(newVal)
+		m.atIndex = 0
+		return true
+	}
+	return false
 }
 
 func (m Model) slashMatches() []slashCommand {
@@ -1531,12 +1771,50 @@ func (m Model) homeView(width, height int) string {
 		maxCommands = 4
 	}
 	palette := m.slashPalette(composerWidth, maxCommands)
+	atPalette := m.atPalette(composerWidth, maxCommands)
+
 	inside := composerWidth - chatComposerStyle.GetHorizontalFrameSize()
-	model := mutedStyle.Render("queryshift") + mutedStyle.Render("  ·  bedrock/") + statusValueStyle.Render(m.modelName())
-	composer := chatComposerStyle.Width(composerWidth).Render(m.chat.View() + "\n" + spread(model, modeMeta, inside))
-	inputBlock := palette
-	if inputBlock != "" {
-		inputBlock += "\n"
+
+	// Top Context Strip inside composer (OpenCode signature status bar)
+	modelPill := mutedStyle.Render("queryshift") + mutedStyle.Render("  ·  bedrock/") + statusValueStyle.Render(m.modelName())
+	currentVal := strings.TrimSpace(m.chat.Value())
+	if strings.HasPrefix(currentVal, "/") {
+		modelPill += "  " + badgeStyle.Render("COMMAND")
+	} else if strings.HasPrefix(currentVal, "@") || strings.Contains(currentVal, " @") {
+		modelPill += "  " + lipgloss.NewStyle().Bold(true).Foreground(colorCanvas).Background(colorBlue).Padding(0, 1).Render("TABLE CONTEXT")
+	} else if strings.HasPrefix(currentVal, "!") {
+		modelPill += "  " + dangerBadgeStyle.Render("SQL RUNNER")
+	}
+
+	topContextBar := spread(modelPill, modeMeta, inside)
+
+	// Bottom Action Strip inside composer
+	var bottomActionStrip string
+	if m.chatBusy {
+		elapsed := time.Since(m.chatSince).Round(time.Second)
+		leftBusy := goodStyle.Render("● Running agent (" + elapsed.String() + ")")
+		rightBusy := helpKeys("enter", "queue", "esc", "interrupt")
+		bottomActionStrip = spread(leftBusy, rightBusy, inside)
+	} else {
+		leftAction := mutedStyle.Render("⏎ send  ·  ctrl+j newline  ·  / commands  ·  @ tables  ·  ↑ history")
+		charCount := len([]rune(m.chat.Value()))
+		rightAction := ""
+		if charCount > 0 {
+			rightAction = mutedStyle.Render(fmt.Sprintf("%d chars", charCount))
+		} else {
+			rightAction = keyStyle.Render("ctrl+p") + mutedStyle.Render(" commands")
+		}
+		bottomActionStrip = spread(leftAction, rightAction, inside)
+	}
+
+	composerContent := topContextBar + "\n" + m.chat.View() + "\n" + bottomActionStrip
+	composer := chatComposerStyle.Width(composerWidth).Render(composerContent)
+
+	inputBlock := ""
+	if palette != "" {
+		inputBlock += palette + "\n"
+	} else if atPalette != "" {
+		inputBlock += atPalette + "\n"
 	}
 	if len(m.chatQueue) > 0 {
 		next := strings.ReplaceAll(m.chatQueue[0], "\n", " ")
@@ -1557,6 +1835,54 @@ func (m Model) homeView(width, height int) string {
 	}
 	spacer := max(1, height-lipgloss.Height(top)-lipgloss.Height(inputBlock))
 	return lipgloss.NewStyle().Width(columnWidth).Render(top + strings.Repeat("\n", spacer) + inputBlock)
+}
+
+func (m Model) atPalette(width, maxRows int) string {
+	if !m.isAtTriggered() {
+		return ""
+	}
+	inside := width - commandPaletteStyle.GetHorizontalFrameSize()
+	if m.workspace == nil {
+		msg := disconnectedStyle.Render("○ No database connected. ") + mutedStyle.Render("Type /connect to link a schema and enable @table context.")
+		return commandPaletteStyle.Width(width).Render(overlineStyle.Render("TABLE CONTEXT (@)") + "\n" + fit(msg, inside))
+	}
+	matches := m.atMatches()
+	if len(matches) == 0 {
+		return ""
+	}
+	selected := min(m.atIndex, len(matches)-1)
+	start := 0
+	if len(matches) > maxRows && selected >= maxRows {
+		start = selected - maxRows + 1
+	}
+	end := min(len(matches), start+maxRows)
+	var rows []string
+	rows = append(rows, overlineStyle.Render("TABLE CONTEXT (@ MENTIONS)"))
+	for index := start; index < end; index++ {
+		table := matches[index]
+		nameStyle := commandStyle
+		detailStyle := mutedStyle
+		marker := "  "
+		if index == selected {
+			marker = "› "
+			nameStyle = selectedCommandStyle
+			detailStyle = selectedCommandDetailStyle
+		}
+		tableName := "@" + table.Name
+		meta := fmt.Sprintf("%d cols", table.ColCount)
+		if table.PK != "" {
+			meta = fmt.Sprintf("PK: %s · %d cols", table.PK, table.ColCount)
+		}
+		metaFormatted := keyStyle.Render(meta)
+		descWidth := max(8, inside-len(marker)-len(tableName)-lipgloss.Width(metaFormatted)-6)
+		desc := strings.TrimSpace(fit(table.Description, descWidth))
+		left := marker + nameStyle.Render(tableName) + "  " + detailStyle.Render(desc)
+		rows = append(rows, spread(left, metaFormatted, inside))
+	}
+	if len(matches) > maxRows {
+		rows = append(rows, mutedStyle.Render(fmt.Sprintf("  %d of %d tables · ↑/↓ to browse · tab to complete", selected+1, len(matches))))
+	}
+	return commandPaletteStyle.Width(width).Render(strings.Join(rows, "\n"))
 }
 
 func (m Model) slashPalette(width, maxRows int) string {
