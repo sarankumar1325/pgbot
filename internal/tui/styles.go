@@ -42,9 +42,14 @@ var (
 	activeTabStyle      = lipgloss.NewStyle().Bold(true).Foreground(colorCanvas).Background(colorCyan).Padding(0, 1)
 	assistantLabelStyle = lipgloss.NewStyle().Bold(true).Foreground(colorCyan)
 	userLabelStyle      = lipgloss.NewStyle().Bold(true).Foreground(colorBlue)
+	chatPromptStyle     = lipgloss.NewStyle().Bold(true).Foreground(colorBlue)
+	chatReceiptStyle    = lipgloss.NewStyle().Foreground(colorMuted)
+	chatInlineCodeStyle = lipgloss.NewStyle().Foreground(colorCyan)
+	chatCodeBlockStyle  = lipgloss.NewStyle().Foreground(colorInk).Background(colorPanel).Padding(0, 1)
 	commandStyle        = lipgloss.NewStyle().Bold(true).Foreground(colorBlue)
-	chatComposerStyle   = lipgloss.NewStyle().Background(colorPanel).
-				BorderStyle(lipgloss.ThickBorder()).BorderLeft(true).BorderForeground(colorCyan).Padding(1, 2)
+	chatComposerStyle   = lipgloss.NewStyle().
+				BorderStyle(lipgloss.NormalBorder()).BorderLeft(true).BorderForeground(colorCyan).Padding(0, 1)
+	chatInputStyle      = lipgloss.NewStyle()
 	commandPaletteStyle = lipgloss.NewStyle().Background(colorPanel).
 				BorderStyle(lipgloss.NormalBorder()).BorderLeft(true).BorderForeground(colorBorder).Padding(1, 2)
 	queuedPromptStyle = lipgloss.NewStyle().Foreground(colorMuted).Background(colorPanelAlt).

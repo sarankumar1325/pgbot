@@ -47,6 +47,7 @@ func TestAnalyzeChangeRejectsUnsafeScopeAndBatches(t *testing.T) {
 		"CREATE ROLE admin SUPERUSER",
 		"INSERT INTO a VALUES (1); DELETE FROM b",
 		"SELECT * FROM users",
+		"CREATE INDEX CONCURRENTLY users_email_idx ON users(email)",
 	} {
 		if _, err := AnalyzeChange(sql); err == nil {
 			t.Fatalf("AnalyzeChange(%q) should fail", sql)

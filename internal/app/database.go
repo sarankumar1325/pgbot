@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -34,15 +35,32 @@ type DatabaseLoadUpdate struct {
 	Err    error
 }
 
+const (
+	// A suspended Neon database normally wakes in 3–12 seconds. Do not let a
+	// broken route, DNS lookup, or TLS handshake fall through to the operating
+	// system's minute-long network timeout.
+	databaseConnectTimeout = 15 * time.Second
+	// Loading a workspace includes connection, capability probes, catalog reads,
+	// and ER rendering. Large schemas get the time left after connection, while a
+	// stalled operation always returns control to the TUI promptly.
+	databaseWorkspaceTimeout = 30 * time.Second
+)
+
 // StreamLoadDatabase connects to the database, introspects tables, columns, indexes,
 // and foreign keys, and builds the ER model while streaming live progress updates.
 func StreamLoadDatabase(ctx context.Context, connectionString string) <-chan DatabaseLoadUpdate {
+	return streamLoadDatabase(ctx, connectionString, databaseConnectTimeout, databaseWorkspaceTimeout)
+}
+
+func streamLoadDatabase(ctx context.Context, connectionString string, connectTimeout, workspaceTimeout time.Duration) <-chan DatabaseLoadUpdate {
 	updates := make(chan DatabaseLoadUpdate, 32)
 	go func() {
 		defer close(updates)
+		loadCtx, cancelLoad := context.WithTimeout(ctx, workspaceTimeout)
+		defer cancelLoad()
 		send := func(stage, log string) {
 			select {
-			case <-ctx.Done():
+			case <-loadCtx.Done():
 			case updates <- DatabaseLoadUpdate{Stage: stage, Log: log}:
 			}
 		}
@@ -55,19 +73,58 @@ func StreamLoadDatabase(ctx context.Context, connectionString string) <-chan Dat
 
 		send("Validating", "Parsing connection string and credentials")
 
-		target, err := conn.ConnectWithProgress(ctx, connectionString, func(stage, detail string) {
-			send(stage, detail)
-		})
+		connectCtx, cancelConnect := context.WithTimeout(loadCtx, connectTimeout)
+		type connectionResult struct {
+			target *conn.Target
+			err    error
+		}
+		connectionResults := make(chan connectionResult)
+		go func() {
+			target, err := conn.ConnectWithProgress(connectCtx, connectionString, func(stage, detail string) {
+				send(stage, detail)
+			})
+			result := connectionResult{target: target, err: err}
+			select {
+			case connectionResults <- result:
+			case <-connectCtx.Done():
+				// A driver or resolver may return after our hard deadline. Do not
+				// leak a pool if that late result happened to succeed.
+				if target != nil {
+					target.Close()
+				}
+			}
+		}()
+
+		var target *conn.Target
+		var err error
+		select {
+		case result := <-connectionResults:
+			target, err = result.target, result.err
+			cancelConnect()
+		case <-connectCtx.Done():
+			connectErr := connectCtx.Err()
+			cancelConnect()
+			if errors.Is(connectErr, context.DeadlineExceeded) && ctx.Err() == nil {
+				updates <- DatabaseLoadUpdate{Err: fmt.Errorf("connection timed out after %s; Neon wake-up normally completes within 3–12s—verify the endpoint or network and retry", connectTimeout)}
+				return
+			}
+			updates <- DatabaseLoadUpdate{Err: fmt.Errorf("connect: %w", connectErr)}
+			return
+		}
 		if err != nil {
 			updates <- DatabaseLoadUpdate{Err: fmt.Errorf("connect: %s", conn.RedactConnString(err.Error()))}
 			return
 		}
 		defer target.Close()
 
-		schema, err := erd.IntrospectWithProgress(ctx, target.Pool, "", func(stage, detail string) {
+		schema, err := erd.IntrospectWithProgress(loadCtx, target.Pool, "", func(stage, detail string) {
 			send(stage, detail)
 		})
 		if err != nil {
+			if errors.Is(loadCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
+				updates <- DatabaseLoadUpdate{Err: fmt.Errorf("database workspace load timed out after %s while reading the schema; retry or use a direct database endpoint", workspaceTimeout)}
+				return
+			}
 			updates <- DatabaseLoadUpdate{Err: fmt.Errorf("load schema: %s", conn.RedactConnString(err.Error()))}
 			return
 		}
@@ -227,25 +284,29 @@ func formatCell(value any) string {
 // ChangePlan is a deterministic safety classification shown before applying a
 // schema or data change.
 type ChangePlan struct {
-	Kind                 string
-	Summary              string
-	Destructive          bool
-	Versioned            bool
-	BackupRequired       bool
-	RecoveryLevel        string
-	RecoveryNote         string
-	RollbackSQL          string
-	RequiredConfirmation string
+	Kind                 string `json:"kind"`
+	Summary              string `json:"summary"`
+	Destructive          bool   `json:"destructive"`
+	Versioned            bool   `json:"versioned"`
+	BackupRequired       bool   `json:"backup_required"`
+	RecoveryLevel        string `json:"recovery_level"`
+	RecoveryNote         string `json:"recovery_note"`
+	RollbackSQL          string `json:"rollback_sql,omitempty"`
+	RequiredConfirmation string `json:"required_confirmation"`
 }
 
 type ChangeResult struct {
-	Command       string
-	RowsAffected  int64
-	Duration      time.Duration
-	MigrationID   string
-	MigrationPath string
-	RecoveryLevel string
-	SnapshotAfter bool
+	Command            string
+	RowsAffected       int64
+	Duration           time.Duration
+	MigrationID        string
+	MigrationPath      string
+	RecoveryLevel      string
+	SnapshotAfter      bool
+	ContractID         string
+	ExecutionMode      string
+	BeforeSchemaSHA256 string
+	AfterSchemaSHA256  string
 }
 
 // AnalyzeChange accepts schema/table/value changes but deliberately excludes
@@ -259,6 +320,9 @@ func AnalyzeChange(sql string) (ChangePlan, error) {
 	plan := ChangePlan{
 		Kind: keyword, Summary: keyword + " statement", RequiredConfirmation: "APPLY",
 		Versioned: true, RecoveryLevel: "manual", RecoveryNote: "Schema snapshots and the exact SQL are versioned locally.",
+	}
+	if containsKeyword(upper, "CONCURRENTLY") {
+		return ChangePlan{}, fmt.Errorf("CONCURRENTLY cannot run inside QueryShift's single-transaction write boundary; create a reviewed external migration for this operation")
 	}
 
 	switch keyword {
@@ -336,22 +400,54 @@ func AnalyzeChange(sql string) (ChangePlan, error) {
 	return plan, nil
 }
 
-// ApplyChange executes one pre-confirmed statement in one short transaction.
-// Confirmation is checked again here so callers cannot bypass the TUI guard.
+// ApplyChange preserves the programmatic API while using the same contract
+// execution path as the TUI. Interactive callers should build and review a
+// ChangeContract before calling ApplyChangeContract.
 func ApplyChange(ctx context.Context, connectionString, sql, confirmation string) (*ChangeResult, error) {
-	plan, err := AnalyzeChange(sql)
-	if err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(strings.ToUpper(confirmation)) != plan.RequiredConfirmation {
-		return nil, fmt.Errorf("confirmation must exactly match %q", plan.RequiredConfirmation)
-	}
-
 	before, err := LoadDatabase(ctx, connectionString)
 	if err != nil {
 		return nil, fmt.Errorf("capture pre-change schema: %w", err)
 	}
-	journal, err := startMigrationJournal(sql, plan, before)
+	contract, err := BuildChangeContract(sql, before)
+	if err != nil {
+		return nil, err
+	}
+	return applyChangeContract(ctx, connectionString, contract, confirmation, before)
+}
+
+// ApplyChangeContract executes only the exact statement and target approved in
+// a validated ChangeContract. A target change, schema drift, contract edit, or
+// mismatched approval phrase stops execution before a write connection opens.
+func ApplyChangeContract(ctx context.Context, connectionString string, contract ChangeContract, confirmation string) (*ChangeResult, error) {
+	if err := ValidateChangeContract(contract, nil); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(strings.ToUpper(confirmation)) != contract.Plan.RequiredConfirmation {
+		return nil, fmt.Errorf("confirmation must exactly match %q", contract.Plan.RequiredConfirmation)
+	}
+	before, err := LoadDatabase(ctx, connectionString)
+	if err != nil {
+		return nil, fmt.Errorf("capture pre-change schema: %w", err)
+	}
+	return applyChangeContract(ctx, connectionString, contract, confirmation, before)
+}
+
+func applyChangeContract(ctx context.Context, connectionString string, contract ChangeContract, confirmation string, before *DatabaseWorkspace) (*ChangeResult, error) {
+	if err := ValidateChangeContract(contract, before); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(strings.ToUpper(confirmation)) != contract.Plan.RequiredConfirmation {
+		return nil, fmt.Errorf("confirmation must exactly match %q", contract.Plan.RequiredConfirmation)
+	}
+	return executeChangeContract(ctx, connectionString, contract, before, "production")
+}
+
+func executeChangeContract(ctx context.Context, connectionString string, contract ChangeContract, before *DatabaseWorkspace, executionMode string) (*ChangeResult, error) {
+	beforeHash, err := workspaceSchemaSHA256(before)
+	if err != nil {
+		return nil, err
+	}
+	journal, err := startMigrationJournal(contract, before, executionMode)
 	if err != nil {
 		return nil, fmt.Errorf("create migration version: %w", err)
 	}
@@ -394,7 +490,7 @@ func ApplyChange(ctx context.Context, connectionString, sql, confirmation string
 			_ = tx.Rollback(context.Background())
 		}
 	}()
-	tag, err := tx.Exec(ctx, sql)
+	tag, err := tx.Exec(ctx, contract.Statement)
 	if err != nil {
 		_ = journal.finish("failed", nil, err)
 		return nil, fmt.Errorf("apply change: %s", conn.RedactConnString(err.Error()))
@@ -405,15 +501,18 @@ func ApplyChange(ctx context.Context, connectionString, sql, confirmation string
 	}
 	committed = true
 	after, snapshotErr := LoadDatabase(ctx, connectionString)
+	afterHash := ""
 	if snapshotErr != nil {
 		_ = journal.finish("applied_snapshot_pending", nil, snapshotErr)
 	} else {
+		afterHash, _ = workspaceSchemaSHA256(after)
 		_ = journal.finish("applied", after, nil)
 	}
 	return &ChangeResult{
 		Command: tag.String(), RowsAffected: tag.RowsAffected(), Duration: time.Since(started),
-		MigrationID: journal.id, MigrationPath: journal.sqlPath, RecoveryLevel: plan.RecoveryLevel,
-		SnapshotAfter: snapshotErr == nil,
+		MigrationID: journal.id, MigrationPath: journal.sqlPath, RecoveryLevel: contract.Plan.RecoveryLevel,
+		SnapshotAfter: snapshotErr == nil, ContractID: contract.ID, ExecutionMode: executionMode,
+		BeforeSchemaSHA256: beforeHash, AfterSchemaSHA256: afterHash,
 	}, nil
 }
 

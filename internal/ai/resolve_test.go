@@ -81,6 +81,9 @@ func TestResolveBedrockUsesAgentModelFallback(t *testing.T) {
 	if m.Provider() != "bedrock" || m.Model() != "deepseek.v3.2" {
 		t.Fatalf("bedrock agent model fallback not honored: provider=%q model=%q", m.Provider(), m.Model())
 	}
+	if m.Endpoint() != "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1" {
+		t.Fatalf("DeepSeek endpoint = %q, want Bedrock Runtime Chat Completions", m.Endpoint())
+	}
 }
 
 // OpenAI already won auto-detection before Anthropic and xAI were added.

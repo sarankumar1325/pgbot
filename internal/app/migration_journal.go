@@ -17,31 +17,41 @@ import (
 // changes. It deliberately lives outside the target database so QueryShift
 // does not install bookkeeping tables in customer schemas.
 type migrationJournal struct {
-	id       string
-	sqlPath  string
-	metaPath string
-	meta     migrationMetadata
+	id           string
+	sqlPath      string
+	metaPath     string
+	contractPath string
+	meta         migrationMetadata
 }
 
 type migrationMetadata struct {
-	ID                 string    `json:"id"`
-	CreatedAt          time.Time `json:"created_at"`
-	AppliedAt          time.Time `json:"applied_at,omitempty"`
-	Status             string    `json:"status"`
-	Target             string    `json:"target"`
-	TargetID           string    `json:"target_id"`
-	Kind               string    `json:"kind"`
-	Summary            string    `json:"summary"`
-	SQLSHA256          string    `json:"sql_sha256"`
-	RecoveryLevel      string    `json:"recovery_level"`
-	RecoveryNote       string    `json:"recovery_note"`
-	BackupAcknowledged bool      `json:"backup_acknowledged"`
-	BeforeSHA256       string    `json:"before_schema_sha256"`
-	AfterSHA256        string    `json:"after_schema_sha256,omitempty"`
-	Error              string    `json:"error,omitempty"`
+	ID                 string              `json:"id"`
+	CreatedAt          time.Time           `json:"created_at"`
+	AppliedAt          time.Time           `json:"applied_at,omitempty"`
+	Status             string              `json:"status"`
+	Target             string              `json:"target"`
+	TargetID           string              `json:"target_id"`
+	Kind               string              `json:"kind"`
+	Summary            string              `json:"summary"`
+	SQLSHA256          string              `json:"sql_sha256"`
+	RecoveryLevel      string              `json:"recovery_level"`
+	RecoveryNote       string              `json:"recovery_note"`
+	BackupAcknowledged bool                `json:"backup_acknowledged"`
+	BeforeSHA256       string              `json:"before_schema_sha256"`
+	AfterSHA256        string              `json:"after_schema_sha256,omitempty"`
+	Error              string              `json:"error,omitempty"`
+	ContractID         string              `json:"contract_id"`
+	ContractVersion    string              `json:"contract_version"`
+	ContractSHA256     string              `json:"contract_sha256"`
+	RiskLevel          string              `json:"risk_level"`
+	AffectedObjects    []ChangeObject      `json:"affected_objects,omitempty"`
+	Verification       []VerificationProbe `json:"verification"`
+	ExecutionMode      string              `json:"execution_mode"`
 }
 
-func startMigrationJournal(statement string, plan ChangePlan, before *DatabaseWorkspace) (*migrationJournal, error) {
+func startMigrationJournal(contract ChangeContract, before *DatabaseWorkspace, executionMode string) (*migrationJournal, error) {
+	statement := contract.Statement
+	plan := contract.Plan
 	base, err := migrationStateDir()
 	if err != nil {
 		return nil, err
@@ -57,6 +67,7 @@ func startMigrationJournal(statement string, plan ChangePlan, before *DatabaseWo
 	stem := id + "_" + strings.ToLower(plan.Kind)
 	sqlPath := filepath.Join(dir, stem+".sql")
 	metaPath := filepath.Join(dir, stem+".json")
+	contractPath := filepath.Join(dir, stem+".contract.json")
 
 	beforeBytes, err := json.MarshalIndent(before.Schema, "", "  ")
 	if err != nil {
@@ -69,6 +80,7 @@ func startMigrationJournal(statement string, plan ChangePlan, before *DatabaseWo
 
 	var migration strings.Builder
 	fmt.Fprintf(&migration, "-- queryshift migration %s\n", id)
+	fmt.Fprintf(&migration, "-- change contract %s (sha256 %s)\n", contract.ID, contract.ContractSHA256)
 	fmt.Fprintf(&migration, "-- target %s/%s (%s)\n", before.Host, before.Database, targetID)
 	fmt.Fprintf(&migration, "-- recovery %s: %s\n", plan.RecoveryLevel, plan.RecoveryNote)
 	migration.WriteString("-- queryshift:up\n")
@@ -85,15 +97,25 @@ func startMigrationJournal(statement string, plan ChangePlan, before *DatabaseWo
 	if err := writeSecure(sqlPath, []byte(migration.String())); err != nil {
 		return nil, fmt.Errorf("write migration SQL: %w", err)
 	}
+	contractBytes, err := json.MarshalIndent(contract, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("encode change contract: %w", err)
+	}
+	if err := writeSecure(contractPath, append(contractBytes, '\n')); err != nil {
+		return nil, fmt.Errorf("write change contract: %w", err)
+	}
 
 	j := &migrationJournal{
-		id: id, sqlPath: sqlPath, metaPath: metaPath,
+		id: id, sqlPath: sqlPath, metaPath: metaPath, contractPath: contractPath,
 		meta: migrationMetadata{
 			ID: id, CreatedAt: time.Now().UTC(), Status: "planned",
 			Target: before.Host + "/" + before.Database, TargetID: targetID,
 			Kind: plan.Kind, Summary: plan.Summary, SQLSHA256: hex.EncodeToString(statementHash[:]),
 			RecoveryLevel: plan.RecoveryLevel, RecoveryNote: plan.RecoveryNote,
 			BackupAcknowledged: plan.BackupRequired, BeforeSHA256: hex.EncodeToString(beforeHash[:]),
+			ContractID: contract.ID, ContractVersion: contract.Version, ContractSHA256: contract.ContractSHA256,
+			RiskLevel: contract.Risk.Level, AffectedObjects: contract.AffectedObjects, Verification: contract.Verification,
+			ExecutionMode: executionMode,
 		},
 	}
 	if err := j.writeMetadata(); err != nil {
@@ -165,7 +187,7 @@ func updateMigrationIntegrity(dir string) error {
 	}
 	var names []string
 	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".sql") {
+		if !entry.IsDir() && (strings.HasSuffix(entry.Name(), ".sql") || strings.HasSuffix(entry.Name(), ".contract.json")) {
 			names = append(names, entry.Name())
 		}
 	}

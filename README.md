@@ -13,11 +13,11 @@
 <h1 align="center">QueryShift</h1>
 
 <p align="center">
-  <strong>Autonomous multi-agent SQL modernization.</strong><br>
-  Map, translate, validate, optimize, and audit legacy Oracle, SQL Server, DB2,
-  MySQL, and Sybase queries for PostgreSQL.<br>
-  Amazon Bedrock provides the model; Strands orchestrates the agents; the
-  diagnostic and agent tools remain read-only by default.
+  <strong>Evidence-backed PostgreSQL change intelligence.</strong><br>
+  Ask, observe, propose, rehearse, approve, apply, and verify database changes
+  through one credential-safe workflow.<br>
+  Deterministic tools provide evidence; models explain and propose while
+  policy-enforced code remains the execution boundary.
 </p>
 
 <p align="center">
@@ -57,18 +57,72 @@ go build -o ./bin/queryshift ./cmd/queryshift
 ./bin/queryshift
 ```
 
-The home screen works without a database. Choose **Modernize SQL** to paste a
-legacy query, select its dialect with `ctrl+d`, and start the Bedrock agent
-pipeline with `ctrl+r`. Choose **Open database workspace** to paste a PostgreSQL
-or Neon connection string; QueryShift masks it, keeps it only in process memory,
-and loads the current schema and ER relationships. The SQL panel runs bounded
-reads by default. Intentional schema or data changes require `ctrl+w`, the
-literal `WRITE` unlock, a statement preview, and a second `APPLY` confirmation
-(`APPLY DESTRUCTIVE` for high-risk operations). Press `F1` from any screen for
-the keyboard reference, or `ctrl+e` on the connection screen to load an existing
-`DATABASE_URL` without displaying it.
+The conversation works immediately without a database. Ask general database
+questions, discuss SQL, or plan architecture from the home composer. Use
+`/connect` only when you need live schema context or query execution; after the
+connection is verified, QueryShift returns to the same conversation with that
+context attached. Slash commands run the same tools as the agent and return
+their results in chat: `/schema users`, `/erd orders`, `/inspect locks`,
+`/query SELECT ...`, and `/modernize <SQL>`. Write SQL passed to `/query`
+creates an immutable proposal in chat; `/rehearse`, `/approve`, and the exact
+`/apply WRITE <contract-id> <confirmation>` command advance its verified run.
+Press `F1` from any screen for the keyboard reference, or `ctrl+e`
+on the connection screen to load an existing `DATABASE_URL` without displaying
+it. When a connected question asks about health or performance, the chat selects
+a focused deterministic read-only tool, shows one compact receipt, and gives the
+model labeled schema, workload, query, dependency, or history evidence to cite
+as `[E1]`, `[E2]`, and so on. `/evidence` opens the complete source payload for
+the latest answer. General chat never wakes the database.
 All existing scriptable commands remain available, and `queryshift tui` opens
 the same full-screen interface explicitly.
+
+Every write preview now produces a versioned [Change Contract](docs/change-contract.md)
+that binds the reviewed SQL to the target and structural schema snapshot. The
+contract records risk, affected objects, dependencies, recovery requirements,
+and verification probes. QueryShift reloads the schema and validates the full
+contract immediately before execution, failing closed on SQL edits, target
+changes, or schema drift.
+
+For pull requests and CI, generate and verify the same proof without exposing an
+apply command:
+
+```sh
+queryshift change plan migrations/change.sql -o change.contract.json
+queryshift change verify change.contract.json
+```
+
+See the [CI change-proof workflow](docs/ci-change-proof.md).
+
+Disposable rehearsal and local enterprise governance are available through
+`queryshift change rehearse`, `policy-check`, `approve`, and
+`approval-verify`. See [governance and signed approvals](docs/governance.md).
+Neon users can create, verify, and automatically remove an isolated rehearsal
+branch with `queryshift change rehearse-neon --project-id …`; the branch
+connection URI remains memory-only.
+
+The integrated workflow uses a Verified Change Run. It enforces rehearsal for
+elevated-or-higher changes and an independent role-bound approval for
+high/critical changes before a production write connection is opened:
+
+```sh
+queryshift change run-init change.contract.json -o change.run.json
+queryshift change bundle change.run.json -o .queryshift/changes/my-change
+queryshift change bundle-verify .queryshift/changes/my-change
+```
+
+Compare environments without reading table values, and keep credentials only
+in runner-local secret references:
+
+```sh
+queryshift environments diff --from-url "$STAGING_DATABASE_URL" --to-url "$PRODUCTION_DATABASE_URL"
+queryshift environments config-check .queryshift/environments.json
+```
+
+For team execution, `queryshift runner request`, `verify`, and `execute` use
+short-lived signed requests. Requests and bundles contain no DSN; the customer
+runner resolves `env://VARIABLE_NAME` locally, enforces RBAC and policy, rejects
+replayed nonces, and can export a hash-chained JSONL audit trail. See the
+[customer-controlled runner guide](docs/enterprise-runner.md).
 
 Modernize a legacy query using a supplied PostgreSQL schema snapshot:
 
@@ -513,7 +567,7 @@ one SSH connection serves the whole run. Raise `--timeout` if the link is slow.
 | `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Enables `ask` / `explain` via Google Gemini. |
 | `ANTHROPIC_API_KEY` | Enables `ask` / `explain` via Anthropic. |
 | `XAI_API_KEY` / `GROK_API_KEY` | Enables `ask` / `explain` via xAI. |
-| `AWS_BEARER_TOKEN_BEDROCK`, or `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` | Enables `ask` / `explain` via AWS Bedrock Mantle with `QUERYSHIFT_AI_PROVIDER=bedrock` (never auto-detected). `AWS_REGION` picks the endpoint; `AWS_CREDENTIAL_EXPIRATION` bounds the minted token. |
+| `AWS_BEARER_TOKEN_BEDROCK`, or `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` | Enables `ask` / `explain` via AWS Bedrock with `QUERYSHIFT_AI_PROVIDER=bedrock` (never auto-detected). `AWS_REGION` picks the endpoint; `AWS_CREDENTIAL_EXPIRATION` bounds the minted token. |
 | `QUERYSHIFT_AI_PROVIDER` | `gemini`, `anthropic`, `openai`, `xai`, or `bedrock` (alias `mantle`) — picks one when several keys are set (auto-detection tries OpenAI first). |
 | `QUERYSHIFT_AI_MODEL` / `QUERYSHIFT_AI_BASE_URL` / `QUERYSHIFT_AI_API_KEY` | Model, endpoint, and key override for whichever provider is selected; the way to reach an OpenAI-compatible service (OpenRouter, Groq, Ollama, vLLM, …). |
 | `QUERYSHIFT_AI_REASONING_EFFORT` | `none`, `low`, `medium`, `high`, `xhigh`, or `max` for reasoning models (OpenAI's default here is `xhigh`). |
@@ -834,7 +888,7 @@ override its defaults. Existing `QUERYSHIFT_GEMINI_MODEL` and `QUERYSHIFT_GEMINI
 and `QUERYSHIFT_OPENAI_MODEL` and `QUERYSHIFT_OPENAI_URL` settings remain supported. Keys
 are read only from environment variables.
 
-For AWS Bedrock Mantle, select `bedrock` (or its alias `mantle`) and give queryshift
+For AWS Bedrock, select `bedrock` (or its alias `mantle`) and give queryshift
 AWS credentials the same way you give it any other key — through the environment.
 No AWS SDK, no config files read, no calls to STS or instance metadata: queryshift
 mints Bedrock's bearer token itself from the standard three variables.
@@ -865,12 +919,15 @@ default model is `openai.gpt-5.6-terra`. OpenAI GPT models use
 documented by
 [AWS for OpenAI GPT models](https://aws.amazon.com/blogs/machine-learning/get-started-with-openai-gpt-5-6-sol-terra-and-luna-on-amazon-bedrock/);
 models beginning with `anthropic.` use
-`https://bedrock-mantle.<region>.api.aws/anthropic` and the Messages API. Set
+`https://bedrock-mantle.<region>.api.aws/anthropic` and the Messages API, while
+models beginning with `deepseek.` use
+`https://bedrock-runtime.<region>.amazonaws.com/openai/v1` and Chat Completions
+because DeepSeek V3.2 does not support the Responses API. Set
 `QUERYSHIFT_AI_MODEL` to the exact Bedrock model ID available to your account and
 region, including for GPT-6 models. `QUERYSHIFT_AI_BASE_URL` overrides the base URL,
-without the final `/responses` or `/v1/messages`. Access keys are only ever sent
-to the Mantle HTTPS host for the configured region, and Bedrock requests never
-follow redirects.
+without the final `/responses`, `/chat/completions`, or `/v1/messages`. Access
+keys are only ever sent to the matching Bedrock HTTPS host for the configured
+region, and Bedrock requests never follow redirects.
 
 Responses requests set `store=false`, omit sampling temperature for GPT-5/6
 reasoning models, and allow at least 32,000 output tokens (including hidden

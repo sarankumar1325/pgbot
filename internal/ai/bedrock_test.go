@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -105,6 +106,7 @@ func TestBedrockEnvCredentials(t *testing.T) {
 	}{
 		{"openai.gpt-5.6-terra", "", "/openai/v1/responses"},
 		{"anthropic.claude-sonnet-5", "", "/anthropic/v1/messages"},
+		{"deepseek.v3.2", "", "/openai/v1/chat/completions"},
 		{"anthropic.claude-sonnet-5", "https://bedrock-mantle.us-west-2.api.aws", "/v1/messages"},
 		{"openai.gpt-5.6-terra", "https://bedrock-mantle.us-west-2.api.aws/anthropic", "/anthropic/responses"},
 	} {
@@ -130,6 +132,8 @@ func TestBedrockEnvCredentials(t *testing.T) {
 			case *anthropicModel:
 				client = m.provider.HTTP
 				header, other = "x-api-key", "Authorization"
+			case *openaiModel:
+				client = m.provider.HTTP
 			default:
 				t.Fatalf("unexpected model type %T", m)
 			}
@@ -161,9 +165,9 @@ func TestBedrockEnvCredentials(t *testing.T) {
 				if header == "x-api-key" && r.Header.Get("anthropic-version") != anthropicVersion {
 					t.Error("missing Anthropic version")
 				}
-				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"status":"completed","stop_reason":"end_turn","content":[{"type":"text","text":"OK"}],"output":[{"type":"message","content":[{"type":"output_text","text":"OK"}]}]}`))}, nil
+				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"status":"completed","stop_reason":"end_turn","content":[{"type":"text","text":"OK"}],"output":[{"type":"message","content":[{"type":"output_text","text":"OK"}]}],"choices":[{"message":{"role":"assistant","content":"OK"},"finish_reason":"stop"}]}`))}, nil
 			})
-			out, err := m.Generate(context.Background(), Call{Prompt: "hello"})
+			out, err := m.Generate(context.Background(), Call{Prompt: "hello", MaxOutputTokens: i64(1200)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -175,9 +179,62 @@ func TestBedrockEnvCredentials(t *testing.T) {
 			}
 			r, _ := http.NewRequest("POST", "https://example.com/responses", nil)
 			if _, err := auth.RoundTrip(r); err == nil || calls != 1 {
-				t.Fatal("credentials sent outside Mantle")
+				t.Fatal("credentials sent outside Bedrock")
 			}
 		})
+	}
+}
+
+func TestBedrockDeepSeekUsesChatCompletions(t *testing.T) {
+	isolateAWS(t)
+	var requestPath string
+	transport := bedrockTestTransport(func(r *http.Request) (*http.Response, error) {
+		requestPath = r.URL.Path
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Fatalf("missing Bedrock bearer token: %q", r.Header.Get("Authorization"))
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body["model"] != "deepseek.v3.2" || body["max_tokens"] != float64(1200) {
+			t.Fatalf("incorrect DeepSeek request: %v", body)
+		}
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"choices":[{"message":{"role":"assistant","content":"Hello from Bedrock."},"finish_reason":"stop"}]}`))}, nil
+	})
+	client := &http.Client{Transport: transport}
+	model, err := bedrockModel("deepseek.v3.2", "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1", "test-token", client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := model.Generate(context.Background(), Call{Prompt: "hello", MaxOutputTokens: i64(1200)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requestPath != "/openai/v1/chat/completions" {
+		t.Fatalf("DeepSeek path = %q, want Chat Completions (never /responses)", requestPath)
+	}
+	if result.Text != "Hello from Bedrock." || model.Provider() != "bedrock" {
+		t.Fatalf("result=%q provider=%q", result.Text, model.Provider())
+	}
+}
+
+func TestBedrockDeepSeekLive(t *testing.T) {
+	if os.Getenv("QUERYSHIFT_BEDROCK_INTEGRATION") != "1" {
+		t.Skip("set QUERYSHIFT_BEDROCK_INTEGRATION=1 to call Bedrock")
+	}
+	model, err := bedrockModel("deepseek.v3.2", "", "", &http.Client{Timeout: 30 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := model.Generate(context.Background(), Call{
+		Prompt: "Reply with exactly: ok", MaxOutputTokens: i64(8),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(result.Text) == "" {
+		t.Fatal("Bedrock returned an empty DeepSeek response")
 	}
 }
 

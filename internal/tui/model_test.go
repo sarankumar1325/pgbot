@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -27,7 +28,7 @@ func testModel() Model {
 		Query: func(context.Context, string, string) (*app.QueryResult, error) {
 			return &app.QueryResult{Columns: []string{"id"}, Rows: [][]string{{"1"}}}, nil
 		},
-		Apply: func(context.Context, string, string, string) (*app.ChangeResult, error) {
+		Apply: func(context.Context, string, app.ChangeContract, string) (*app.ChangeResult, error) {
 			return &app.ChangeResult{Command: "UPDATE 1", RowsAffected: 1}, nil
 		},
 		Chat: func(context.Context, app.ChatRequest) (*app.ChatResponse, error) {
@@ -40,15 +41,15 @@ func testModel() Model {
 	return ready
 }
 
-func TestHomeOpensModernizer(t *testing.T) {
+func TestModernizeSlashRunsInline(t *testing.T) {
 	m := testModel()
 	m.connection = "postgresql://owner:secret@example.test/db"
 	m.workspace = &app.DatabaseWorkspace{Host: "example.test", Database: "app"}
-	m.chat.SetValue("/modernize")
-	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m.chat.SetValue("/modernize SELECT TOP 10 * FROM dbo.orders")
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	got := updated.(Model)
-	if got.screen != screenModernizer || !got.sql.Focused() {
-		t.Fatalf("enter should open focused modernizer, screen=%d focused=%v", got.screen, got.sql.Focused())
+	if got.screen != screenHome || !got.modernizeInline || !got.chatBusy || cmd == nil {
+		t.Fatalf("modernize should run in chat, screen=%d inline=%v busy=%v", got.screen, got.modernizeInline, got.chatBusy)
 	}
 }
 
@@ -56,12 +57,12 @@ func TestHomeIsOneChatComposerWithoutWorkflowCards(t *testing.T) {
 	m := testModel()
 	view := m.homeView(100, 28)
 
-	for _, want := range []string{"Database work, with a safety boundary.", "DATABASE NOT CONNECTED"} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("chat home is missing %q:\n%s", want, view)
+	for _, unwanted := range []string{"Database work, with a safety boundary.", "chat works without live context", "CHAT READY", "Ask anything. Connect only", "bedrock/", "READ MODE"} {
+		if strings.Contains(view, unwanted) {
+			t.Fatalf("empty home still contains noisy default copy %q:\n%s", unwanted, view)
 		}
 	}
-	if m.chat.Placeholder != "Ask QueryShift, paste SQL, or type /connect…" {
+	if m.chat.Placeholder != "Ask about your database, paste SQL, or type / for commands…" {
 		t.Fatalf("unexpected chat placeholder %q", m.chat.Placeholder)
 	}
 	for _, unwanted := range []string{"SELECTED", "WORKFLOWS", "SESSION"} {
@@ -71,17 +72,17 @@ func TestHomeIsOneChatComposerWithoutWorkflowCards(t *testing.T) {
 	}
 }
 
-func TestPastedSQLRoutesFromChatToModernizer(t *testing.T) {
+func TestPastedSQLRunsModernizerInChat(t *testing.T) {
 	m := testModel()
 	m.connection = "postgresql://owner:secret@example.test/db"
 	m.workspace = &app.DatabaseWorkspace{Host: "example.test", Database: "app"}
 	m.chat.SetValue("SELECT TOP 10 * FROM dbo.orders")
 
-	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	got := updated.(Model)
 
-	if got.screen != screenModernizer || !strings.Contains(got.sql.Value(), "SELECT TOP 10") {
-		t.Fatalf("pasted SQL did not route to modernizer: screen=%d sql=%q", got.screen, got.sql.Value())
+	if got.screen != screenHome || !got.modernizeInline || !got.chatBusy || cmd == nil {
+		t.Fatalf("pasted SQL did not start inline modernizer: screen=%d inline=%v busy=%v", got.screen, got.modernizeInline, got.chatBusy)
 	}
 }
 
@@ -96,8 +97,15 @@ func TestNaturalLanguageStartsAgentAndRendersResponse(t *testing.T) {
 	if !running.chatBusy || cmd == nil {
 		t.Fatalf("natural language should start the agent immediately: busy=%v cmd=%v", running.chatBusy, cmd)
 	}
-	if view := running.homeView(100, 28); !strings.Contains(view, "AGENT RUNNING") {
-		t.Fatalf("running state is not visible:\n%s", view)
+	if view := running.homeView(100, 28); !strings.Contains(view, "Preparing answer") || !strings.Contains(view, "interrupt") {
+		t.Fatalf("contextual running state is not visible:\n%s", view)
+	} else {
+		plain := plainTerminalText(view)
+		queryAt := strings.Index(plain, "hi there what can you do")
+		activityAt := strings.Index(plain, "Preparing answer")
+		if queryAt < 0 || activityAt <= queryAt {
+			t.Fatalf("loading activity must render directly after the submitted query:\n%s", plain)
+		}
 	}
 
 	request := app.ChatRequest{Question: "hi there what can you do", Workspace: running.workspace}
@@ -111,23 +119,247 @@ func TestNaturalLanguageStartsAgentAndRendersResponse(t *testing.T) {
 	if !strings.Contains(last.text, "inspect health") || last.meta != "bedrock · deepseek.v3.2" {
 		t.Fatalf("assistant response missing: %+v", last)
 	}
+	view := finished.homeView(100, 28)
+	if strings.Contains(view, "bedrock") || strings.Contains(view, "deepseek") || strings.Contains(view, "YOU") {
+		t.Fatalf("normal transcript leaked implementation metadata or heavy labels:\n%s", view)
+	}
 }
 
-func TestNaturalLanguageWaitsForConnectionThenResumes(t *testing.T) {
+func TestNaturalLanguageStartsWithoutDatabaseConnection(t *testing.T) {
 	m := testModel()
 	m.chat.SetValue("what can you do")
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	running := updated.(Model)
+	if running.screen != screenHome || !running.chatBusy || cmd == nil {
+		t.Fatalf("disconnected chat should start immediately: screen=%d busy=%v cmd=%v", running.screen, running.chatBusy, cmd)
+	}
+	if running.workspace != nil {
+		t.Fatal("disconnected chat should not fabricate a database workspace")
+	}
+}
+
+func TestHealthQuestionCollectsReadOnlyEvidenceBeforeChat(t *testing.T) {
+	var received app.ChatRequest
+	m := testModel()
+	m.deps.Chat = func(_ context.Context, request app.ChatRequest) (*app.ChatResponse, error) {
+		received = request
+		return &app.ChatResponse{
+			Text: "Blocking sessions are the likely cause [E2].", Model: "deepseek.v3.2", Provider: "bedrock",
+			Evidence: []app.ChatEvidence{{ID: "E1", Kind: "schema_catalog"}, {ID: "E2", Kind: "health_inspection"}},
+		}, nil
+	}
+	m.connection = "postgresql://owner:secret@example.test/db"
+	m.workspace = &app.DatabaseWorkspace{Host: "example.test", Database: "app"}
+	m.chat.SetValue("Why is the database slow?")
+
 	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	connecting := updated.(Model)
-	if connecting.screen != screenConnect || connecting.pendingAsk != "what can you do" {
-		t.Fatalf("question should wait for database: screen=%d pending=%q", connecting.screen, connecting.pendingAsk)
+	running := updated.(Model)
+	request := app.ChatRequest{Question: "Why is the database slow?", Workspace: running.workspace}
+	updates := running.chatAgentStream(context.Background(), request, app.PlanChatTools(request.Question, running.workspace))
+	current := running
+	for step := 0; step < 12 && current.chatBusy; step++ {
+		message := current.chatProgressCmd(current.jobID, updates)()
+		next, _ := current.Update(message)
+		current = next.(Model)
+	}
+	finished := current
+	if finished.chatBusy {
+		t.Fatal("live agent event stream did not complete")
+	}
+	seen := map[string]bool{}
+	for _, message := range finished.chatLog {
+		seen[message.meta] = true
+	}
+	for _, meta := range []string{"tool result"} {
+		if !seen[meta] {
+			t.Fatalf("live agent log missing %q: %+v", meta, finished.chatLog)
+		}
+	}
+	for _, meta := range []string{"plan", "context", "model", "tool call", "evidence collected"} {
+		if seen[meta] {
+			t.Fatalf("internal orchestration noise leaked into transcript as %q: %+v", meta, finished.chatLog)
+		}
+	}
+	if len(received.Evidence) != 1 || received.Evidence[0].Kind != string(app.ChatToolHealthInspection) {
+		t.Fatalf("chat did not receive collected health evidence: %+v", received.Evidence)
+	}
+	view := finished.homeView(120, 34)
+	for _, want := range []string{"Inspected database health", "Blocking sessions are the likely cause [E2]."} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("evidence-backed result missing %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestHealthRequestAndConfirmationAutomaticallyInvokeInspector(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		history  []chatMessage
+		question string
+	}{
+		{
+			name:     "direct health request",
+			question: "tell me about the health of the database",
+		},
+		{
+			name: "confirmation inherits request",
+			history: []chatMessage{
+				{role: "you", text: "tell me about the health of the database"},
+				{role: "queryshift", text: "I need health evidence."},
+			},
+			question: "do it yourseld",
+		},
+		{
+			name: "yes inherits request",
+			history: []chatMessage{
+				{role: "you", text: "tell me about the health of the database"},
+				{role: "queryshift", text: "I need health evidence."},
+				{role: "you", text: "do it yourseld"},
+				{role: "queryshift", text: "Should I proceed?"},
+			},
+			question: "yess",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m := testModel()
+			m.connection = "postgresql://owner:secret@example.test/db"
+			m.workspace = &app.DatabaseWorkspace{Host: "example.test", Database: "app"}
+			m.chatLog = append(m.chatLog, test.history...)
+			m.chat.SetValue(test.question)
+
+			updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			running := updated.(Model)
+			if !running.chatBusy || !running.chatTooling || cmd == nil {
+				t.Fatalf("health intent should invoke the inspector: busy=%v tooling=%v cmd=%v", running.chatBusy, running.chatTooling, cmd)
+			}
+		})
+	}
+}
+
+func TestSchemaDependencyQuestionUsesSnapshotToolAndCompactReceipt(t *testing.T) {
+	var received app.ChatRequest
+	m := testModel()
+	m.deps.Chat = func(_ context.Context, request app.ChatRequest) (*app.ChatResponse, error) {
+		received = request
+		return &app.ChatResponse{
+			Text: "`orders.user_id` depends on `users.id` [E2].", Model: "deepseek.v3.2", Provider: "bedrock",
+			Evidence: []app.ChatEvidence{{ID: "E1", Kind: "schema_catalog"}, {ID: "E2", Kind: string(app.ChatToolSchemaDependencies)}},
+		}, nil
+	}
+	m.workspace = &app.DatabaseWorkspace{Database: "app", Schema: erd.Schema{
+		Tables: []erd.Table{
+			{Schema: "public", Name: "users", Columns: []erd.Column{{Name: "id", Type: "bigint", PK: true}}},
+			{Schema: "public", Name: "orders", Columns: []erd.Column{{Name: "user_id", Type: "bigint", FKTarget: "users.id"}}},
+		},
+		Edges: []erd.Edge{{FromTable: "orders", FromColumn: "user_id", ToTable: "users", ToColumn: "id"}},
+	}}
+	m.chat.SetValue("What depends on users?")
+
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	current := updated.(Model)
+	updates := current.chatAgentStream(context.Background(), app.ChatRequest{Question: "What depends on users?", Workspace: current.workspace}, app.PlanChatTools("What depends on users?", current.workspace))
+	for step := 0; step < 12 && current.chatBusy; step++ {
+		message := current.chatProgressCmd(current.jobID, updates)()
+		next, _ := current.Update(message)
+		current = next.(Model)
+	}
+	if current.chatBusy {
+		t.Fatal("schema dependency agent stream did not complete")
+	}
+	if len(received.Evidence) != 1 || received.Evidence[0].Kind != string(app.ChatToolSchemaDependencies) {
+		t.Fatalf("dependency evidence was not supplied to chat: %+v", received.Evidence)
+	}
+	view := current.homeView(120, 32)
+	for _, want := range []string{"Traced schema dependencies · 1 relationships", "orders.user_id", "users.id"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("dependency result missing %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "Tracing schema dependencies") || strings.Contains(view, "tool call") {
+		t.Fatalf("transcript leaked transient tool narration:\n%s", view)
+	}
+}
+
+func TestDatabaseSlashCommandsStayInChat(t *testing.T) {
+	m := testModel()
+	m.connection = "postgresql://owner:secret@example.test/db"
+	m.workspace = &app.DatabaseWorkspace{Host: "example.test", Database: "app", Schema: erd.Schema{Tables: []erd.Table{{Schema: "public", Name: "users", Columns: []erd.Column{{Name: "id", Type: "bigint", PK: true}}}}}}
+	for _, command := range []string{"/schema users", "/erd users", "/inspect locks"} {
+		candidate := m
+		candidate.chat.SetValue(command)
+		updated, cmd := candidate.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		got := updated.(Model)
+		if got.screen != screenHome || !got.chatBusy || !got.chatTooling || cmd == nil {
+			t.Fatalf("%s should run a tool in chat: screen=%d busy=%v tooling=%v", command, got.screen, got.chatBusy, got.chatTooling)
+		}
+	}
+}
+
+func TestQuerySlashReturnsReadsAndProposesWritesInChat(t *testing.T) {
+	m := testModel()
+	m.connection = "postgresql://owner:secret@example.test/db"
+	m.workspace = &app.DatabaseWorkspace{Host: "example.test", Database: "app"}
+	m.chat.SetValue("/query SELECT 1 AS id")
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	read := updated.(Model)
+	if read.screen != screenHome || !read.chatBusy || cmd == nil {
+		t.Fatalf("read query should execute inline: screen=%d busy=%v", read.screen, read.chatBusy)
+	}
+	message := read.inlineQueryCmd(context.Background(), read.jobID, "SELECT 1 AS id")()
+	updated, _ = read.Update(message)
+	finished := updated.(Model)
+	if finished.chatBusy || !strings.Contains(finished.chatLog[len(finished.chatLog)-1].text, "| id |") {
+		t.Fatalf("read result was not rendered in chat: %+v", finished.chatLog)
 	}
 
-	connecting.connection = "postgresql://owner:secret@example.test/db"
-	connecting.jobID = 9
-	updated, cmd := connecting.Update(databaseLoadedMsg{id: 9, result: &app.DatabaseWorkspace{Host: "example.test", Database: "app"}})
+	m = testModel()
+	m.connection = "postgresql://owner:secret@example.test/db"
+	m.workspace = &app.DatabaseWorkspace{Host: "example.test", Database: "app"}
+	m.chat.SetValue("/query CREATE TABLE public.events(id bigint)")
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	proposal := updated.(Model)
+	if proposal.screen != screenHome || proposal.changeRun == nil || proposal.changeContract.ID == "" {
+		t.Fatalf("write should create an inline proposal: screen=%d run=%+v", proposal.screen, proposal.changeRun)
+	}
+	if text := proposal.chatLog[len(proposal.chatLog)-1].text; !strings.Contains(text, "Created change proposal") || !strings.Contains(text, "/apply WRITE") {
+		t.Fatalf("proposal guidance missing: %s", text)
+	}
+}
+
+func TestEvidenceSlashRendersInline(t *testing.T) {
+	m := testModel()
+	m.chatEvidence = []app.ChatEvidence{{ID: "E1", Kind: "schema", Source: "queryshift.workspace", Summary: "users table", Content: "public.users(id bigint)"}}
+	m.chat.SetValue("/evidence")
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	got := updated.(Model)
+	if got.screen != screenHome || len(got.chatLog) < 2 || !strings.Contains(got.chatLog[len(got.chatLog)-1].text, "public.users") {
+		t.Fatalf("evidence should render in chat: screen=%d log=%+v", got.screen, got.chatLog)
+	}
+}
+
+func TestQuestionMarkTypesNormallyAndHelpUsesSlashCommand(t *testing.T) {
+	m := testModel()
+	updated, _ := m.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
+	typed := updated.(Model)
+	if typed.helpOpen || typed.chat.Value() != "?" {
+		t.Fatalf("question mark should type into chat, help=%v input=%q", typed.helpOpen, typed.chat.Value())
+	}
+	typed.chat.SetValue("/help")
+	updated, _ = typed.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	got := updated.(Model)
+	if got.helpOpen || got.screen != screenHome || len(got.chatLog) < 2 || !strings.Contains(got.chatLog[len(got.chatLog)-1].text, "/schema") {
+		t.Fatal("/help should render command guidance in chat")
+	}
+}
+
+func TestPastedSQLCanBeDiscussedWithoutDatabaseConnection(t *testing.T) {
+	m := testModel()
+	m.chat.SetValue("SELECT id, email FROM users")
+
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	running := updated.(Model)
-	if !running.chatBusy || running.pendingAsk != "" || cmd == nil {
-		t.Fatalf("pending question did not resume: busy=%v pending=%q cmd=%v", running.chatBusy, running.pendingAsk, cmd)
+	if running.screen != screenHome || !running.chatBusy || cmd == nil {
+		t.Fatalf("SQL should remain a chat prompt without live context: screen=%d busy=%v cmd=%v", running.screen, running.chatBusy, cmd)
 	}
 }
 
@@ -223,11 +455,41 @@ func TestConnectedHomeUsesFullWidthWithoutRepeatingLongHostInComposer(t *testing
 	if strings.Contains(view, m.workspace.Host) {
 		t.Fatalf("composer status should not repeat the long host:\n%s", view)
 	}
-	if !strings.Contains(view, "CONNECTED") || !strings.Contains(view, "READ MODE") {
-		t.Fatalf("connected status missing:\n%s", view)
+	if strings.Contains(view, "CONNECTED") || strings.Contains(view, "READ MODE") || strings.Contains(view, "bedrock/") {
+		t.Fatalf("composer repeats status or model metadata:\n%s", view)
 	}
 	if got := lipgloss.Width(view); got != 146 {
 		t.Fatalf("home width = %d, want full available width 146", got)
+	}
+}
+
+func TestComposerKeepsShortcutsInOneContextualFooter(t *testing.T) {
+	m := testModel()
+	view := m.homeView(120, 32)
+	if got := strings.Count(view, "enter"); got != 1 {
+		t.Fatalf("composer should show the send shortcut once, got %d occurrences:\n%s", got, view)
+	}
+	if !strings.Contains(view, "ctrl+p") || !strings.Contains(view, "palette") {
+		t.Fatalf("composer should expose the command palette affordance:\n%s", view)
+	}
+}
+
+func TestAnimatedScannerMovesBidirectionallyAtConstantWidth(t *testing.T) {
+	forward := animatedScanner(1, 8)
+	returning := animatedScanner(8, 8)
+	if forward == returning {
+		t.Fatal("scanner should move back after reaching the far edge")
+	}
+	if lipgloss.Width(forward) != 8 || lipgloss.Width(returning) != 8 {
+		t.Fatalf("scanner width changed: forward=%d returning=%d", lipgloss.Width(forward), lipgloss.Width(returning))
+	}
+}
+
+func TestAgentLoaderAnimatesAtConstantWidth(t *testing.T) {
+	first := agentLoader(0)
+	second := agentLoader(1)
+	if first == second || lipgloss.Width(first) != lipgloss.Width(second) {
+		t.Fatalf("agent loader should animate without changing width: %q %q", first, second)
 	}
 }
 
@@ -252,12 +514,12 @@ func TestPendingSlashCommandResumesAfterConnection(t *testing.T) {
 	m.pendingCmd = "/erd"
 	m.connection = "postgresql://owner:secret@example.test/db"
 	m.jobID = 3
-	updated, _ := m.Update(databaseLoadedMsg{id: 3, result: &app.DatabaseWorkspace{
+	updated, cmd := m.Update(databaseLoadedMsg{id: 3, result: &app.DatabaseWorkspace{
 		Host: "example.test", Database: "app", Version: "PostgreSQL 18.1",
 	}})
 	got := updated.(Model)
-	if got.screen != screenDatabase || got.dbTab != 2 || got.pendingCmd != "" {
-		t.Fatalf("pending command did not resume: screen=%d tab=%d pending=%q", got.screen, got.dbTab, got.pendingCmd)
+	if got.screen != screenHome || !got.chatBusy || cmd == nil || got.pendingCmd != "" {
+		t.Fatalf("pending command did not resume in chat: screen=%d busy=%v pending=%q", got.screen, got.chatBusy, got.pendingCmd)
 	}
 }
 
@@ -300,7 +562,7 @@ func TestBracketedPasteReachesConnectionInput(t *testing.T) {
 	}
 }
 
-func TestConnectionLoadsDatabaseWorkspace(t *testing.T) {
+func TestConnectionReturnsToChatWithDatabaseContext(t *testing.T) {
 	m := testModel()
 	m.screen = screenConnect
 	m.dsn.SetValue("postgresql://owner:secret@example.test/db")
@@ -315,9 +577,113 @@ func TestConnectionLoadsDatabaseWorkspace(t *testing.T) {
 	message := running.loadDatabaseCmd(context.Background(), running.jobID, running.connection, false)()
 	updated, _ = running.Update(message)
 	finished := updated.(Model)
-	if finished.screen != screenDatabase || finished.workspace == nil || finished.workspace.Database != "app" {
+	if finished.screen != screenHome || finished.workspace == nil || finished.workspace.Database != "app" || !finished.chat.Focused() {
 		t.Fatalf("database workspace did not load: screen=%d workspace=%+v", finished.screen, finished.workspace)
 	}
+	if len(finished.chatLog) != 0 {
+		t.Fatalf("successful connection should update header without polluting conversation: %+v", finished.chatLog)
+	}
+	if view := finished.View().Content; !strings.Contains(view, "app") || !strings.Contains(view, "read") {
+		t.Fatalf("header should show compact connected database context:\n%s", view)
+	}
+}
+
+func TestDatabaseChangeTabFramesWritesAsReviewedProposals(t *testing.T) {
+	m := testModel()
+	m.screen = screenDatabase
+	m.dbTab = 3
+	m.workspace = &app.DatabaseWorkspace{Host: "example.test", Database: "app", Version: "PostgreSQL 18.1", Provider: "neon"}
+	m.dbSQL.SetValue("ALTER TABLE users ADD COLUMN timezone text")
+	view := m.databaseView(120, 32)
+	for _, want := range []string{"CHANGE PROPOSAL", "REVIEW REQUIRED", "4  Change"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("change workspace missing %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "SQL console") {
+		t.Fatalf("change workspace still uses generic SQL-console framing:\n%s", view)
+	}
+}
+
+func TestChatMarkdownRendersWithoutSyntaxNoise(t *testing.T) {
+	rendered := renderChatMarkdown("**Writing is controlled.**\n\n- Review `SQL`\n- Approve it", 60)
+	for _, unwanted := range []string{"**", "`"} {
+		if strings.Contains(rendered, unwanted) {
+			t.Fatalf("rendered chat contains raw Markdown marker %q: %q", unwanted, rendered)
+		}
+	}
+	if !strings.Contains(rendered, "Writing is controlled.") || !strings.Contains(rendered, "• ") || !strings.Contains(rendered, "SQL") {
+		t.Fatalf("rendered chat lost content: %q", rendered)
+	}
+}
+
+func TestChatTurnsUseOneBlankLineAndNoUserBubble(t *testing.T) {
+	m := testModel()
+	m.chatLog = []chatMessage{
+		{role: "you", text: "hello"},
+		{role: "queryshift", text: "Hi."},
+		{role: "you", text: "Can you write?"},
+		{role: "queryshift", text: "Yes, after review and approval."},
+	}
+	view := m.homeView(120, 32)
+	plain := plainTerminalText(view)
+	if strings.Contains(plain, "YOU") || strings.Contains(plain, "bedrock") || strings.Contains(plain, "deepseek") {
+		t.Fatalf("compact transcript contains removed labels or model metadata:\n%s", view)
+	}
+	if !strings.Contains(plain, "› hello") || !strings.Contains(plain, "› Can you write?") {
+		t.Fatalf("user turns do not use the compact prompt treatment:\n%s", view)
+	}
+	conversation := plain
+	if composerAt := strings.LastIndex(conversation, "│ ›"); composerAt >= 0 {
+		conversation = conversation[:composerAt]
+	}
+	conversation = strings.TrimSpace(conversation)
+	if strings.Contains(conversation, "\n\n\n") {
+		t.Fatalf("transcript contains more than one blank line between content:\n%s", view)
+	}
+}
+
+func TestWideConversationKeepsOnlyUsefulInformation(t *testing.T) {
+	m := testModel()
+	m.width, m.height = 180, 48
+	m.workspace = &app.DatabaseWorkspace{Database: "neondb", Host: "ep-delicate-unit-b447m4hv-pooler.c-6.us-east-2.aws.neon.tech"}
+	m.chatLog = []chatMessage{
+		{role: "you", text: "hello queryshift"},
+		{role: "queryshift", meta: "bedrock · deepseek.v3.2", text: "Hello. I can inspect this database and help plan a safe change."},
+		{role: "you", text: "can you write to the db?"},
+		{role: "queryshift", meta: "bedrock · deepseek.v3.2", text: "**Yes.** Writes run only after you review the exact `SQL` and approve it."},
+	}
+	plain := plainTerminalText(m.View().Content)
+	for _, unwanted := range []string{"bedrock", "deepseek", "YOU", "**", "`", m.workspace.Host, "Connected to"} {
+		if strings.Contains(plain, unwanted) {
+			t.Fatalf("wide conversation contains noisy detail %q:\n%s", unwanted, plain)
+		}
+	}
+	for _, want := range []string{"neondb", "·  read", "› hello queryshift", "› can you write to the db?", "Writes run only after"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("wide conversation missing %q:\n%s", want, plain)
+		}
+	}
+	nonEmpty := 0
+	for _, line := range strings.Split(plain, "\n") {
+		if strings.TrimSpace(line) != "" {
+			nonEmpty++
+		}
+	}
+	if nonEmpty > 16 {
+		t.Fatalf("simple two-turn conversation uses %d non-empty rows, want <= 16:\n%s", nonEmpty, plain)
+	}
+}
+
+var terminalEscapePattern = regexp.MustCompile(`\x1b\[[0-9;:]*[A-Za-z]`)
+
+func plainTerminalText(value string) string {
+	value = terminalEscapePattern.ReplaceAllString(value, "")
+	lines := strings.Split(value, "\n")
+	for index := range lines {
+		lines[index] = strings.TrimRight(lines[index], " ")
+	}
+	return strings.Join(lines, "\n")
 }
 
 func TestWriteModeNeedsUnlockAndStatementConfirmation(t *testing.T) {
@@ -347,6 +713,15 @@ func TestWriteModeNeedsUnlockAndStatementConfirmation(t *testing.T) {
 	preview := updated.(Model)
 	if preview.screen != screenChangeConfirm || preview.changePlan.RequiredConfirmation != "BACKUP AND APPLY" {
 		t.Fatalf("write should open a change preview: screen=%d plan=%+v", preview.screen, preview.changePlan)
+	}
+	if preview.changeContract.ID == "" || preview.changeContract.Statement != "UPDATE users SET active = false WHERE id = 1" {
+		t.Fatalf("write preview did not bind an immutable contract: %+v", preview.changeContract)
+	}
+	view := preview.changeConfirmView(120)
+	for _, want := range []string{"IMMUTABLE CHANGE CONTRACT", preview.changeContract.ID, "REQUIRED VERIFICATION"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("change preview missing %q:\n%s", want, view)
+		}
 	}
 }
 
@@ -495,8 +870,82 @@ func TestDatabaseLoadingStreamsProgressAndLogs(t *testing.T) {
 		result:  ws,
 	})
 	doneModel := updated.(Model)
-	if doneModel.screen != screenDatabase || doneModel.workspace == nil {
-		t.Fatalf("expected screenDatabase, got %d", doneModel.screen)
+	if doneModel.screen != screenHome || doneModel.workspace == nil {
+		t.Fatalf("expected chat home after connection, got %d", doneModel.screen)
+	}
+}
+
+func TestDatabaseLoadingHasHardDeadline(t *testing.T) {
+	deadlineSeen := make(chan time.Duration, 1)
+	m := NewModel(context.Background(), Dependencies{
+		LoadDatabaseStream: func(ctx context.Context, _ string) <-chan app.DatabaseLoadUpdate {
+			remaining := time.Duration(0)
+			if deadline, ok := ctx.Deadline(); ok {
+				remaining = time.Until(deadline)
+			}
+			deadlineSeen <- remaining
+			updates := make(chan app.DatabaseLoadUpdate, 1)
+			updates <- app.DatabaseLoadUpdate{Err: context.DeadlineExceeded}
+			close(updates)
+			return updates
+		},
+	})
+	m.booting = false
+	m.screen = screenConnect
+	m.dsn.SetValue("postgresql://queryshift@example.test/app")
+
+	updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	loading := updated.(Model)
+	if loading.screen != screenDatabaseLoading {
+		t.Fatalf("expected loading screen, got %d", loading.screen)
+	}
+	remaining := <-deadlineSeen
+	if remaining <= 0 || remaining > databaseWorkspaceLoadTimeout {
+		t.Fatalf("database load deadline = %s, want 0 < deadline <= %s", remaining, databaseWorkspaceLoadTimeout)
+	}
+}
+
+func TestDatabaseLoadingWarnsWhenServerlessWakeupIsAbnormallySlow(t *testing.T) {
+	m := testModel()
+	m.screen = screenDatabaseLoading
+	m.connection = "postgresql://queryshift@ep-cool-unit-pooler.neon.tech/app"
+	m.loadHostHint = "ep-cool-unit-pooler.neon.tech · app"
+	m.loadSince = time.Now().Add(-13 * time.Second)
+
+	view := m.View().Content
+	if !strings.Contains(view, "No response after the normal serverless wake-up window") ||
+		!strings.Contains(view, "stop automatically at") || !strings.Contains(view, "30s.") {
+		t.Fatalf("slow serverless state should explain the hard deadline:\n%s", view)
+	}
+}
+
+func TestDatabaseLoadingWatchdogStopsStuckDriver(t *testing.T) {
+	canceled := false
+	m := testModel()
+	m.screen = screenDatabaseLoading
+	m.connection = "postgresql://queryshift@ep-cool-unit-pooler.neon.tech/app"
+	m.loadSince = time.Now().Add(-databaseWorkspaceLoadTimeout - time.Second)
+	m.loadStage = "Connecting"
+	m.loadLogs = []string{"Dialing database endpoint…"}
+	m.cancel = func() { canceled = true }
+	m.jobID = 7
+
+	updated, cmd := m.Update(pulseMsg(time.Now()))
+	stopped := updated.(Model)
+	if cmd != nil {
+		t.Fatal("watchdog should stop scheduling loading pulses")
+	}
+	if !canceled {
+		t.Fatal("watchdog did not cancel the stuck database operation")
+	}
+	if stopped.screen != screenConnect {
+		t.Fatalf("watchdog screen = %d, want screenConnect", stopped.screen)
+	}
+	if stopped.jobID != 8 {
+		t.Fatalf("watchdog job ID = %d, want late results invalidated", stopped.jobID)
+	}
+	if stopped.err == nil || !strings.Contains(stopped.err.Error(), "timed out after 30s") {
+		t.Fatalf("watchdog error = %v, want actionable timeout", stopped.err)
 	}
 }
 

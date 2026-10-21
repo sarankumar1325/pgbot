@@ -1,7 +1,8 @@
 package ai
 
-// AWS Bedrock Mantle: OpenAI GPT models through the Responses API and Claude
-// through the Messages API, on AWS's endpoints, with AWS credentials.
+// AWS Bedrock: OpenAI GPT models through Mantle's Responses API, Claude through
+// Mantle's Messages API, and DeepSeek through Bedrock Runtime's OpenAI-compatible
+// Chat Completions API, with AWS credentials.
 //
 // No AWS SDK. Bedrock authenticates with a bearer token that is nothing more
 // than a SigV4-presigned URL of `https://bedrock.amazonaws.com/?Action=
@@ -79,12 +80,17 @@ func bedrockModel(model, base, key string, httpc *http.Client) (LanguageModel, e
 		model = "openai." + defaultOpenAIModel
 	}
 	anthropic := strings.HasPrefix(model, "anthropic.")
+	deepseek := strings.HasPrefix(model, "deepseek.")
 	if base == "" {
-		base = "https://bedrock-mantle." + region + ".api.aws"
-		if anthropic {
-			base += "/anthropic"
-		} else {
-			base += "/openai/v1"
+		switch {
+		case anthropic:
+			base = "https://bedrock-mantle." + region + ".api.aws/anthropic"
+		case deepseek:
+			// DeepSeek V3.2 does not implement the Responses API. AWS exposes
+			// it through Chat Completions on the Bedrock Runtime endpoint.
+			base = "https://bedrock-runtime." + region + ".amazonaws.com/openai/v1"
+		default:
+			base = "https://bedrock-mantle." + region + ".api.aws/openai/v1"
 		}
 	}
 	base = trimURL(base)
@@ -95,14 +101,22 @@ func bedrockModel(model, base, key string, httpc *http.Client) (LanguageModel, e
 		if err != nil {
 			return nil, err
 		}
+		expectedHost := "bedrock-mantle." + region + ".api.aws"
+		if deepseek {
+			expectedHost = "bedrock-runtime." + region + ".amazonaws.com"
+		}
 		u, err := url.Parse(base)
-		if err != nil || u.Scheme != "https" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Host != "bedrock-mantle."+region+".api.aws" {
-			return nil, fmt.Errorf("AWS credentials are only sent to the Bedrock Mantle HTTPS endpoint for region %s; set AWS_REGION to the endpoint's region", region)
+		if err != nil || u.Scheme != "https" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Host != expectedHost {
+			return nil, fmt.Errorf("AWS credentials are only sent to the Bedrock HTTPS endpoint for region %s; set AWS_REGION to the endpoint's region", region)
 		}
 		httpc.Transport = &bedrockAuth{creds: creds, region: region, host: u.Host, anthropic: anthropic, next: http.DefaultTransport}
 	}
 	if anthropic {
 		p := &AnthropicProvider{APIKey: key, BaseURL: base, HTTP: httpc, Label: "bedrock"}
+		return p.LanguageModel(context.Background(), model)
+	}
+	if deepseek {
+		p := &OpenAIProvider{APIKey: key, BaseURL: base, HTTP: httpc, Label: "bedrock"}
 		return p.LanguageModel(context.Background(), model)
 	}
 	p := &ResponsesProvider{APIKey: key, BaseURL: base, HTTP: httpc, Label: "bedrock", ReasoningEffort: envOr("QUERYSHIFT_AI_REASONING_EFFORT", "")}
@@ -115,13 +129,13 @@ func bedrockModel(model, base, key string, httpc *http.Client) (LanguageModel, e
 type bedrockAuth struct {
 	creds        awsCredentials
 	region, host string
-	anthropic    bool // Messages API takes x-api-key; the Responses API a Bearer
+	anthropic    bool // Messages takes x-api-key; Responses and Chat Completions use Bearer
 	next         http.RoundTripper
 }
 
 func (a *bedrockAuth) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req.URL.Scheme != "https" || req.URL.Host != a.host {
-		return nil, errors.New("refusing to send AWS credentials outside the configured Mantle endpoint")
+		return nil, errors.New("refusing to send AWS credentials outside the configured Bedrock endpoint")
 	}
 	token, err := bedrockToken(a.creds, a.region, time.Now().UTC())
 	if err != nil {

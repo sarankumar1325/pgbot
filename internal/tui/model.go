@@ -32,17 +32,21 @@ const (
 	screenWriteUnlock
 	screenChangeConfirm
 	screenApplying
+	screenEvidence
+	screenRehearsing
 )
 
 type Dependencies struct {
-	Inspect         func(context.Context, string, int) (*app.Inspection, error)
-	Modernize       func(context.Context, app.ModernizeRequest) (*app.ModernizationResult, error)
-	ModernizeStream func(context.Context, app.ModernizeRequest) <-chan app.ModernizationUpdate
+	Inspect            func(context.Context, string, int) (*app.Inspection, error)
+	Modernize          func(context.Context, app.ModernizeRequest) (*app.ModernizationResult, error)
+	ModernizeStream    func(context.Context, app.ModernizeRequest) <-chan app.ModernizationUpdate
 	LoadDatabase       func(context.Context, string) (*app.DatabaseWorkspace, error)
 	LoadDatabaseStream func(context.Context, string) <-chan app.DatabaseLoadUpdate
 	Query              func(context.Context, string, string) (*app.QueryResult, error)
-	Apply           func(context.Context, string, string, string) (*app.ChangeResult, error)
-	Chat            func(context.Context, app.ChatRequest) (*app.ChatResponse, error)
+	Apply              func(context.Context, string, app.ChangeContract, string) (*app.ChangeResult, error)
+	Rehearse           func(context.Context, string, app.ChangeContract, string) (*app.RehearsalReceipt, error)
+	ApplyVerified      func(context.Context, string, *app.VerifiedChangeRun, string, []byte, time.Time) (*app.ChangeResult, error)
+	Chat               func(context.Context, app.ChatRequest) (*app.ChatResponse, error)
 }
 
 type chatMessage struct {
@@ -61,16 +65,20 @@ type slashCommand struct {
 
 var slashCommands = []slashCommand{
 	{Name: "/connect", Description: "Connect or switch PostgreSQL database", Category: "Database"},
-	{Name: "/schema", Description: "Browse live tables, columns, and indexes", Category: "Database", RequiresDB: true},
-	{Name: "/erd", Description: "Open the live relationship map", Category: "Database", RequiresDB: true},
+	{Name: "/schema", Description: "Explain live tables, columns, and indexes in chat", Category: "Database", RequiresDB: true},
+	{Name: "/erd", Description: "Explain live relationships and dependencies in chat", Category: "Database", RequiresDB: true},
 	{Name: "/inspect", Description: "Run the read-only health inspection", Category: "Database", RequiresDB: true},
-	{Name: "/query", Description: "Open the guarded SQL workspace", Category: "Database", RequiresDB: true},
-	{Name: "/modernize", Description: "Modernize SQL against the connected schema", Category: "Agent", RequiresDB: true},
+	{Name: "/query", Description: "Review a change or run read-only SQL", Category: "Database", RequiresDB: true},
+	{Name: "/modernize", Description: "Modernize SQL with optional live schema", Category: "Agent"},
 	{Name: "/status", Description: "Show connection, model, and safety state", Category: "Session"},
 	{Name: "/new", Description: "Start a clean conversation", Category: "Session", Shortcut: "ctrl+n"},
 	{Name: "/clear", Description: "Clear the visible conversation", Category: "Session"},
+	{Name: "/evidence", Description: "Show evidence from the latest answer in chat", Category: "Session"},
 	{Name: "/about", Description: "Explain QueryShift's safety architecture", Category: "Help"},
 	{Name: "/help", Description: "Show commands and keyboard shortcuts", Category: "Help", Shortcut: "f1"},
+	{Name: "/rehearse", Description: "Rehearse the current change proposal", Category: "Change", RequiresDB: true},
+	{Name: "/approve", Description: "Approve the current change from configured identity", Category: "Change", RequiresDB: true},
+	{Name: "/apply", Description: "Apply the verified change run", Category: "Change", RequiresDB: true},
 }
 
 type Model struct {
@@ -80,42 +88,50 @@ type Model struct {
 	width  int
 	height int
 
-	chat         textarea.Model
-	chatLog      []chatMessage
-	slashIndex   int
-	chatScroll   int
-	paletteDraft string
-	pendingCmd   string
-	pendingAsk   string
-	chatBusy     bool
-	chatSince    time.Time
-	chatModel    string
-	chatQueue    []string
-	dsn          textinput.Model
-	sql          textarea.Model
-	dbSQL        textarea.Model
-	confirm      textinput.Model
-	dialect      int
-	liveSchema   bool
-	connection   string
-	dbTab        int
-	writeMode    bool
-	workspace    *app.DatabaseWorkspace
-	changePlan   app.ChangePlan
-	query        *app.QueryResult
-	change       *app.ChangeResult
+	chat            textarea.Model
+	chatLog         []chatMessage
+	slashIndex      int
+	chatScroll      int
+	paletteDraft    string
+	pendingCmd      string
+	chatBusy        bool
+	chatTooling     bool
+	chatStage       string
+	chatSince       time.Time
+	chatModel       string
+	chatQueue       []string
+	chatEvidence    []app.ChatEvidence
+	modernizeInline bool
+	rehearsalInline bool
+	changeInline    bool
+	refreshHome     bool
+	dsn             textinput.Model
+	sql             textarea.Model
+	dbSQL           textarea.Model
+	confirm         textinput.Model
+	dialect         int
+	liveSchema      bool
+	connection      string
+	dbTab           int
+	writeMode       bool
+	workspace       *app.DatabaseWorkspace
+	changePlan      app.ChangePlan
+	changeContract  app.ChangeContract
+	changeRun       *app.VerifiedChangeRun
+	query           *app.QueryResult
+	change          *app.ChangeResult
 
-	viewport  viewport.Model
-	resultTab int
-	inspect   *app.Inspection
-	modern       *app.ModernizationResult
-	agentRun     []app.AgentRunEvent
-	err          error
-	cancel       context.CancelFunc
-	pulse        int
-	jobID        int
-	booting      bool
-	bootStep     int
+	viewport      viewport.Model
+	resultTab     int
+	inspect       *app.Inspection
+	modern        *app.ModernizationResult
+	agentRun      []app.AgentRunEvent
+	err           error
+	cancel        context.CancelFunc
+	pulse         int
+	jobID         int
+	booting       bool
+	bootStep      int
 	helpOpen      bool
 	loadStage     string
 	loadLogs      []string
@@ -172,10 +188,31 @@ type changeFinishedMsg struct {
 	err    error
 }
 
+type rehearsalFinishedMsg struct {
+	id      int
+	receipt *app.RehearsalReceipt
+	err     error
+}
+
 type chatFinishedMsg struct {
-	id       int
+	id           int
+	response     *app.ChatResponse
+	toolWarnings []string
+	err          error
+}
+
+type chatAgentUpdate struct {
+	kind     string
+	detail   string
+	visible  bool
 	response *app.ChatResponse
 	err      error
+}
+
+type chatProgressMsg struct {
+	id      int
+	update  chatAgentUpdate
+	updates <-chan chatAgentUpdate
 }
 
 type pulseMsg time.Time
@@ -183,6 +220,8 @@ type bootTickMsg time.Time
 type bootDoneMsg struct{}
 
 var dialects = []string{"oracle", "tsql", "db2", "mysql", "sybase", "postgres"}
+
+const databaseWorkspaceLoadTimeout = 30 * time.Second
 
 func NewModel(ctx context.Context, deps Dependencies) Model {
 	if deps.Inspect == nil {
@@ -230,7 +269,13 @@ func NewModel(ctx context.Context, deps Dependencies) Model {
 		deps.Query = app.RunReadQuery
 	}
 	if deps.Apply == nil {
-		deps.Apply = app.ApplyChange
+		deps.Apply = app.ApplyChangeContract
+	}
+	if deps.Rehearse == nil {
+		deps.Rehearse = app.RehearseChangeContract
+	}
+	if deps.ApplyVerified == nil {
+		deps.ApplyVerified = app.ExecuteVerifiedChangeRun
 	}
 	if deps.Chat == nil {
 		deps.Chat = app.Chat
@@ -245,12 +290,24 @@ func NewModel(ctx context.Context, deps Dependencies) Model {
 	dsn.SetWidth(72)
 
 	chat := textarea.New()
-	chat.Placeholder = "Ask QueryShift, paste SQL, or type /connect…"
+	chat.Placeholder = "Ask about your database, paste SQL, or type / for commands…"
 	chat.CharLimit = 100_000
 	chat.ShowLineNumbers = false
 	chat.SetWidth(80)
-	chat.SetHeight(2)
-	chat.Prompt = "  "
+	chat.DynamicHeight = true
+	chat.MinHeight = 1
+	chat.MaxHeight = 5
+	chat.MaxContentHeight = 100_000
+	chat.SetHeight(1)
+	chat.Prompt = "› "
+	chatStyles := chat.Styles()
+	chatStyles.Focused.Base = lipgloss.NewStyle()
+	chatStyles.Focused.CursorLine = lipgloss.NewStyle()
+	chatStyles.Focused.Placeholder = lipgloss.NewStyle().Foreground(colorMuted)
+	chatStyles.Focused.Prompt = lipgloss.NewStyle().Bold(true).Foreground(colorCyan)
+	chatStyles.Focused.Text = lipgloss.NewStyle().Foreground(colorInk)
+	chatStyles.Blurred = chatStyles.Focused
+	chat.SetStyles(chatStyles)
 	chat.Focus()
 
 	sql := textarea.New()
@@ -324,12 +381,29 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.agentRun = append(m.agentRun, msg.event)
+		if m.modernizeInline {
+			stage := strings.TrimSpace(msg.event.Stage)
+			if stage == "" {
+				stage = "Modernizing SQL"
+			}
+			m.chatStage = stage
+		}
 		return m, m.modernizeCmd(msg.id, msg.updates)
 	case modernizeFinishedMsg:
 		if msg.id != m.jobID {
 			return m, nil
 		}
 		m.cancel = nil
+		if m.modernizeInline {
+			m.modernizeInline, m.chatBusy, m.chatTooling, m.chatStage = false, false, false, ""
+			if msg.err != nil {
+				m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "Modernization failed: " + msg.err.Error()})
+				return m, m.chat.Focus()
+			}
+			m.modern = msg.result
+			m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: modernizationChatText(msg.result)})
+			return m, m.chat.Focus()
+		}
 		if msg.err != nil {
 			m.err = msg.err
 			m.screen = screenModernizer
@@ -363,6 +437,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.loadStage = ""
 		m.loadLogs = nil
 		m.loadHostHint = ""
+		if m.refreshHome {
+			m.refreshHome, m.chatBusy, m.chatTooling, m.chatStage = false, false, false, ""
+			m.screen = screenHome
+			if msg.err != nil {
+				m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "The change was applied, but refreshing the schema failed: " + msg.err.Error()})
+				return m, m.chat.Focus()
+			}
+			m.workspace = msg.result
+			return m, m.chat.Focus()
+		}
 		if msg.err != nil {
 			m.err = msg.err
 			if msg.refresh && m.workspace != nil {
@@ -375,23 +459,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.workspace = msg.result
 		m.err = nil
-		if !msg.refresh {
-			m.chatLog = append(m.chatLog, chatMessage{role: "status", text: fmt.Sprintf("Connected to %s on %s. Live schema checks are ready; writes remain locked.", msg.result.Database, msg.result.Host)})
-			m.chatScroll = 0
-		}
 		if m.pendingCmd != "" {
 			pending := m.pendingCmd
 			m.pendingCmd = ""
 			return m.executeSlash(pending)
 		}
-		if m.pendingAsk != "" {
-			question := m.pendingAsk
-			m.pendingAsk = ""
-			return m.startAgentChat(question)
+		if msg.refresh {
+			m.screen = screenDatabase
+			m.refreshDatabaseViewport()
+			return m, nil
 		}
-		m.screen = screenDatabase
-		m.refreshDatabaseViewport()
-		return m, nil
+		m.screen = screenHome
+		return m, m.chat.Focus()
 	case queryFinishedMsg:
 		if msg.id != m.jobID {
 			return m, nil
@@ -411,6 +490,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.cancel = nil
+		if m.changeInline {
+			m.changeInline = false
+			if msg.err != nil {
+				m.chatBusy, m.chatTooling, m.chatStage = false, false, ""
+				m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "Change execution was blocked or failed: " + msg.err.Error()})
+				return m, m.chat.Focus()
+			}
+			m.change = msg.result
+			m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: fmt.Sprintf("Applied and recorded `%s` in %s · %d rows affected · run status **%s**.", msg.result.Command, msg.result.Duration.Round(time.Millisecond), msg.result.RowsAffected, strings.ReplaceAll(m.changeRun.Status, "_", " "))})
+			m.chatStage = "Refreshing schema after change"
+			m.refreshHome = true
+			m.jobID++
+			return m, tea.Batch(m.loadDatabaseCmd(m.ctx, m.jobID, m.connection, true), pulse())
+		}
 		m.screen = screenDatabase
 		m.writeMode = false
 		m.dbSQL.Focus()
@@ -422,12 +515,55 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshDatabaseViewport()
 		m.jobID++
 		return m, m.loadDatabaseCmd(m.ctx, m.jobID, m.connection, true)
+	case rehearsalFinishedMsg:
+		if msg.id != m.jobID {
+			return m, nil
+		}
+		m.cancel = nil
+		if m.rehearsalInline {
+			m.rehearsalInline, m.chatBusy, m.chatTooling, m.chatStage = false, false, false, ""
+			m.screen = screenHome
+			if msg.err != nil {
+				m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "Rehearsal failed: " + msg.err.Error()})
+				return m, m.chat.Focus()
+			}
+			if m.changeRun == nil {
+				m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "The change run was lost; create the proposal again."})
+				return m, m.chat.Focus()
+			}
+			if err := m.changeRun.RecordRehearsal(*msg.receipt, time.Now()); err != nil {
+				m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "The rehearsal receipt was rejected: " + err.Error()})
+				return m, m.chat.Focus()
+			}
+			m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: fmt.Sprintf("Rehearsal **%s** for `%s`. Change run status: **%s**.", msg.receipt.Status, msg.receipt.ContractID, strings.ReplaceAll(m.changeRun.Status, "_", " "))})
+			return m, m.chat.Focus()
+		}
+		m.screen = screenChangeConfirm
+		if msg.err != nil {
+			m.err = msg.err
+			return m, m.confirm.Focus()
+		}
+		if m.changeRun == nil {
+			m.err = fmt.Errorf("change run was lost; review the change again")
+			return m, m.confirm.Focus()
+		}
+		if err := m.changeRun.RecordRehearsal(*msg.receipt, time.Now()); err != nil {
+			m.err = err
+			return m, m.confirm.Focus()
+		}
+		m.err = nil
+		return m, m.confirm.Focus()
 	case chatFinishedMsg:
 		if msg.id != m.jobID {
 			return m, nil
 		}
 		m.cancel = nil
 		m.chatBusy = false
+		m.chatTooling = false
+		m.chatStage = ""
+		for _, warning := range msg.toolWarnings {
+			m.chatLog = append(m.chatLog, chatMessage{role: "tool", text: warning, meta: "evidence unavailable"})
+		}
 		if msg.err != nil {
 			m.chatLog = append(m.chatLog, chatMessage{
 				role: "queryshift",
@@ -443,6 +579,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.chat.Focus()
 		}
 		m.chatModel = msg.response.Provider + " · " + msg.response.Model
+		m.chatEvidence = append([]app.ChatEvidence(nil), msg.response.Evidence...)
 		m.chatLog = append(m.chatLog, chatMessage{
 			role: "queryshift", text: msg.response.Text, meta: m.chatModel,
 		})
@@ -453,8 +590,46 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m.startAgentChat(next)
 		}
 		return m, m.chat.Focus()
+	case chatProgressMsg:
+		if msg.id != m.jobID {
+			return m, nil
+		}
+		if msg.update.response != nil || msg.update.err != nil {
+			return m.Update(chatFinishedMsg{id: msg.id, response: msg.update.response, err: msg.update.err})
+		}
+		m.chatStage = msg.update.detail
+		if msg.update.visible {
+			meta := msg.update.kind
+			if meta == "" {
+				meta = "agent"
+			}
+			m.chatLog = append(m.chatLog, chatMessage{role: "tool", text: msg.update.detail, meta: meta})
+			m.chatScroll = 0
+		}
+		return m, m.chatProgressCmd(msg.id, msg.updates)
 	case pulseMsg:
-		if m.chatBusy || m.screen == screenInspecting || m.screen == screenModernizing || m.screen == screenDatabaseLoading || m.screen == screenApplying {
+		if m.screen == screenDatabaseLoading && !m.loadSince.IsZero() && time.Since(m.loadSince) >= databaseWorkspaceLoadTimeout {
+			if m.cancel != nil {
+				m.cancel()
+			}
+			// Invalidate any late driver result. Some DNS resolvers and database
+			// drivers do not return promptly when their context is canceled.
+			m.jobID++
+			m.cancel = nil
+			m.loadStage = ""
+			m.loadLogs = nil
+			m.loadHostHint = ""
+			m.err = fmt.Errorf("database connection timed out after %s; verify the Neon endpoint, network, and credentials, then retry", databaseWorkspaceLoadTimeout)
+			if m.workspace != nil {
+				m.screen = screenDatabase
+				m.refreshDatabaseViewport()
+			} else {
+				m.screen = screenConnect
+				m.dsn.Focus()
+			}
+			return m, nil
+		}
+		if m.chatBusy || m.screen == screenInspecting || m.screen == screenModernizing || m.screen == screenDatabaseLoading || m.screen == screenApplying || m.screen == screenRehearsing {
 			m.pulse++
 			return m, pulse()
 		}
@@ -497,7 +672,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if key.String() == "ctrl+c" {
 		if m.screen == screenHome && strings.TrimSpace(m.chat.Value()) != "" {
 			m.chat.Reset()
-			m.chat.SetHeight(2)
+			m.chat.SetHeight(1)
 			m.slashIndex = 0
 			m.atIndex = 0
 			m.historyIndex = -1
@@ -517,7 +692,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.helpOpen {
-		if key.String() == "esc" || key.String() == "q" || key.String() == "?" {
+		if key.String() == "esc" || key.String() == "q" {
 			m.helpOpen = false
 		}
 		return m, nil
@@ -559,6 +734,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.viewport, cmd = m.viewport.Update(message)
 		return m, cmd
+	case screenEvidence:
+		if key.String() == "esc" || key.String() == "q" {
+			m.screen = screenHome
+			return m, m.chat.Focus()
+		}
+		var cmd tea.Cmd
+		m.viewport, cmd = m.viewport.Update(message)
+		return m, cmd
 	case screenModernizer:
 		return m.updateModernizer(key)
 	case screenModernizerResult:
@@ -569,7 +752,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateWriteUnlock(key)
 	case screenChangeConfirm:
 		return m.updateChangeConfirm(key)
-	case screenDatabaseLoading, screenApplying:
+	case screenDatabaseLoading, screenApplying, screenRehearsing:
 		if key.String() == "esc" {
 			if m.cancel != nil {
 				m.cancel()
@@ -579,7 +762,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.loadStage = ""
 			m.loadLogs = nil
 			m.loadHostHint = ""
-			if m.workspace != nil {
+			if m.screen == screenRehearsing {
+				m.screen = screenChangeConfirm
+				m.confirm.Focus()
+			} else if m.workspace != nil {
 				m.screen = screenDatabase
 			} else {
 				m.screen = screenConnect
@@ -601,9 +787,6 @@ func (m Model) updateHome(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	matches := m.slashMatches()
 	atMatches := m.atMatches()
 	switch key.String() {
-	case "?":
-		m.helpOpen = true
-		return m, nil
 	case "ctrl+p":
 		if !strings.HasPrefix(strings.TrimSpace(m.chat.Value()), "/") {
 			m.paletteDraft = m.chat.Value()
@@ -618,7 +801,7 @@ func (m Model) updateHome(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.executeSlash("/new")
 	case "ctrl+u":
 		m.chat.Reset()
-		m.chat.SetHeight(2)
+		m.chat.SetHeight(1)
 		m.slashIndex = 0
 		m.atIndex = 0
 		m.historyIndex = -1
@@ -631,11 +814,6 @@ func (m Model) updateHome(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "ctrl+j", "alt+enter", "shift+enter", "ctrl+enter":
 		m.chat.InsertString("\n")
-		lines := strings.Count(m.chat.Value(), "\n") + 1
-		targetHeight := max(2, min(5, lines+1))
-		if m.chat.Height() != targetHeight {
-			m.chat.SetHeight(targetHeight)
-		}
 		return m, nil
 	case "pgup":
 		if len(matches) == 0 && len(atMatches) == 0 {
@@ -720,6 +898,8 @@ func (m Model) updateHome(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.jobID++
 			m.cancel = nil
 			m.chatBusy = false
+			m.chatTooling = false
+			m.chatStage = ""
 			m.chatQueue = nil
 			m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "Agent response cancelled.", meta: "cancelled"})
 			return m, m.chat.Focus()
@@ -740,7 +920,7 @@ func (m Model) updateHome(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		if strings.TrimSpace(m.chat.Value()) != "" {
 			m.chat.Reset()
-			m.chat.SetHeight(2)
+			m.chat.SetHeight(1)
 			m.historyIndex = -1
 			return m, nil
 		}
@@ -756,7 +936,7 @@ func (m Model) updateHome(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.chatLog = append(m.chatLog, chatMessage{role: "you", text: queued, meta: "queued"})
 			m.chatQueue = append(m.chatQueue, queued)
 			m.chat.Reset()
-			m.chat.SetHeight(2)
+			m.chat.SetHeight(1)
 			return m, m.chat.Focus()
 		}
 		if len(atMatches) > 0 {
@@ -771,11 +951,6 @@ func (m Model) updateHome(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.chat, cmd = m.chat.Update(key)
-	lines := strings.Count(m.chat.Value(), "\n") + 1
-	targetHeight := max(2, min(5, lines+1))
-	if m.chat.Height() != targetHeight {
-		m.chat.SetHeight(targetHeight)
-	}
 	if m.slashIndex >= len(m.slashMatches()) {
 		m.slashIndex = 0
 	}
@@ -797,7 +972,7 @@ func (m Model) submitChat() (tea.Model, tea.Cmd) {
 	m.historyDraft = ""
 	m.chatLog = append(m.chatLog, chatMessage{role: "you", text: input})
 	m.chat.Reset()
-	m.chat.SetHeight(2)
+	m.chat.SetHeight(1)
 	m.slashIndex = 0
 	m.atIndex = 0
 	m.chatScroll = 0
@@ -808,7 +983,7 @@ func (m Model) submitChat() (tea.Model, tea.Cmd) {
 		name := strings.Fields(lower)[0]
 		for _, command := range slashCommands {
 			if command.Name == name {
-				return m.executeSlash(name)
+				return m.executeSlash(input)
 			}
 		}
 		m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "Unknown command. Type / to open the command palette."})
@@ -820,8 +995,9 @@ func (m Model) submitChat() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.workspace == nil {
+			m.dbSQL.SetValue(querySQL)
 			m.pendingCmd = "/query"
-			m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "Database connection required to run queries. Connect now; I’ll execute this query right after."})
+			m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "A database connection is required to execute SQL. Connect now; I’ll open this statement in the guarded SQL workspace afterward."})
 			m.chat.Blur()
 			m.screen = screenConnect
 			return m, m.dsn.Focus()
@@ -859,27 +1035,25 @@ func (m Model) submitChat() (tea.Model, tea.Cmd) {
 		}, pulse())
 	}
 	switch {
-	case looksLikeSQL(input):
-		m.sql.SetValue(input)
-		return m.executeSlash("/modernize")
+	case looksLikeSQL(input) && m.workspace != nil:
+		return m.runSlashModernize(input)
 	case lower == "connect" || lower == "connect database":
 		return m.executeSlash("/connect")
 	default:
-		if m.workspace == nil {
-			m.pendingAsk = input
-			m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "I need a verified database connection before I can answer with live schema context. Connect now; I’ll resume this message automatically."})
-			m.chat.Blur()
-			m.screen = screenConnect
-			return m, m.dsn.Focus()
-		}
 		return m.startAgentChat(input)
 	}
 }
 
 func (m Model) startAgentChat(question string) (tea.Model, tea.Cmd) {
-	if m.chatBusy {
-		return m, nil
-	}
+	turns := m.agentHistory(question)
+	return m.startAgentChatWithHistory(question, turns, app.PlanChatToolsWithHistory(question, turns, m.workspace))
+}
+
+func (m Model) startAgentChatWithTools(question string, tools []app.ChatToolName) (tea.Model, tea.Cmd) {
+	return m.startAgentChatWithHistory(question, m.agentHistory(question), tools)
+}
+
+func (m Model) agentHistory(question string) []app.ChatTurn {
 	history := m.chatLog
 	skip := -1
 	for index := len(history) - 1; index >= 0; index-- {
@@ -895,13 +1069,23 @@ func (m Model) startAgentChat(question string) (tea.Model, tea.Cmd) {
 		}
 		turns = append(turns, app.ChatTurn{Role: message.role, Text: message.text})
 	}
+	return turns
+}
+
+func (m Model) startAgentChatWithHistory(question string, turns []app.ChatTurn, tools []app.ChatToolName) (tea.Model, tea.Cmd) {
+	if m.chatBusy {
+		return m, nil
+	}
 	request := app.ChatRequest{Question: question, Workspace: m.workspace, History: turns}
+	m.chatTooling = len(tools) > 0
+	m.chatStage = "Preparing answer"
 	workCtx, cancel := context.WithTimeout(m.ctx, 3*time.Minute)
 	m.cancel = cancel
 	m.chatBusy = true
 	m.chatSince = time.Now()
 	m.jobID++
-	return m, tea.Batch(m.chatCmd(workCtx, m.jobID, request), pulse())
+	updates := m.chatAgentStream(workCtx, request, tools)
+	return m, tea.Batch(m.chatProgressCmd(m.jobID, updates), pulse())
 }
 
 type tableMatch struct {
@@ -995,7 +1179,14 @@ func (m Model) slashMatches() []slashCommand {
 	return matches
 }
 
-func (m Model) executeSlash(name string) (tea.Model, tea.Cmd) {
+func (m Model) executeSlash(input string) (tea.Model, tea.Cmd) {
+	input = strings.TrimSpace(input)
+	fields := strings.Fields(input)
+	if len(fields) == 0 {
+		return m, m.chat.Focus()
+	}
+	name := strings.ToLower(fields[0])
+	arguments := strings.TrimSpace(strings.TrimPrefix(input, fields[0]))
 	var selected slashCommand
 	found := false
 	for _, command := range slashCommands {
@@ -1008,7 +1199,7 @@ func (m Model) executeSlash(name string) (tea.Model, tea.Cmd) {
 		return m, m.chat.Focus()
 	}
 	if selected.RequiresDB && m.workspace == nil {
-		m.pendingCmd = name
+		m.pendingCmd = input
 		m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: strings.TrimPrefix(name, "/") + " needs a verified database connection. Connect now; I’ll continue automatically after the schema check."})
 		m.chat.Blur()
 		m.screen = screenConnect
@@ -1021,56 +1212,233 @@ func (m Model) executeSlash(name string) (tea.Model, tea.Cmd) {
 		m.screen = screenConnect
 		return m, m.dsn.Focus()
 	case "/help":
-		m.helpOpen = true
-		return m, nil
+		m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "Use `/connect` to attach PostgreSQL, `/schema [object]` to inspect structure, `/erd [object]` for dependencies, `/inspect [question]` for health, `/query <SQL>` for reads or proposals, and `/modernize <SQL>` for conversion. Change proposals continue with `/rehearse`, `/approve`, and `/apply WRITE <contract-id> <confirmation>`."})
+		return m, m.chat.Focus()
 	case "/status":
-		status := "No database connected. Read and write actions are locked. Model: " + m.modelName() + "."
+		status := "Chat is ready. No database is connected, so live schema, query, and write tools remain locked. Model: " + m.modelName() + "."
 		if m.workspace != nil {
 			status = fmt.Sprintf("Connected: %s @ %s (%s). Model: %s. Read mode is active; writes require WRITE plus a versioned migration confirmation.", m.workspace.Database, m.workspace.Host, m.workspace.Version, m.modelName())
 		}
 		m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: status})
 		m.chatScroll = 0
 		return m, m.chat.Focus()
+	case "/evidence":
+		if len(m.chatEvidence) == 0 {
+			m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "No answer evidence is available yet. Ask a live-schema or workload question first."})
+			return m, m.chat.Focus()
+		}
+		m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: m.evidenceChatText()})
+		return m, m.chat.Focus()
 	case "/new", "/clear":
 		m.chatLog = nil
 		m.chatQueue = nil
 		m.chatScroll = 0
 		m.chatModel = ""
+		m.chatEvidence = nil
 		m.chat.Reset()
 		return m, m.chat.Focus()
 	case "/about":
-		m.chat.Blur()
-		m.screen = screenAbout
-		return m, nil
+		m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "QueryShift is an evidence-backed PostgreSQL change agent. Models explain and propose; deterministic tools collect evidence, and policy-enforced code controls rehearsal, approval, execution, and verification."})
+		return m, m.chat.Focus()
 	case "/schema":
-		m.chat.Blur()
-		m.screen, m.dbTab = screenDatabase, 1
-		m.refreshDatabaseViewport()
-		return m, nil
+		question := "Summarize the live schema and its most important objects."
+		if arguments != "" {
+			question = "Describe this live schema object: " + arguments
+		}
+		return m.startAgentChatWithTools(question, []app.ChatToolName{app.ChatToolSchemaSearch})
 	case "/erd":
-		m.chat.Blur()
-		m.screen, m.dbTab = screenDatabase, 2
-		m.refreshDatabaseViewport()
-		return m, nil
+		question := "Summarize the live foreign-key relationships and dependency structure."
+		if arguments != "" {
+			question = "Trace dependencies for this live schema object: " + arguments
+		}
+		return m.startAgentChatWithTools(question, []app.ChatToolName{app.ChatToolSchemaDependencies})
 	case "/query":
-		m.chat.Blur()
-		m.screen, m.dbTab = screenDatabase, 3
-		m.refreshDatabaseViewport()
-		return m, m.dbSQL.Focus()
+		return m.runSlashQuery(arguments)
 	case "/modernize":
-		m.chat.Blur()
-		m.liveSchema = true
-		m.screen = screenModernizer
-		return m, m.sql.Focus()
+		return m.runSlashModernize(arguments)
 	case "/inspect":
-		m.chat.Blur()
-		m.screen = screenInspecting
-		workCtx, cancel := context.WithCancel(m.ctx)
-		m.cancel = cancel
-		m.jobID++
-		return m, tea.Batch(m.inspectCmd(workCtx, m.jobID, m.connection), pulse())
+		question := "Inspect the database health and summarize the highest-priority evidence."
+		if arguments != "" {
+			question = arguments
+		}
+		return m.startAgentChatWithTools(question, []app.ChatToolName{app.ChatToolHealthInspection})
+	case "/rehearse":
+		return m.runSlashRehearsal()
+	case "/approve":
+		return m.runSlashApproval()
+	case "/apply":
+		return m.runSlashApply(arguments)
 	}
 	return m, m.chat.Focus()
+}
+
+func (m Model) runSlashQuery(statement string) (tea.Model, tea.Cmd) {
+	statement = strings.TrimSpace(statement)
+	if statement == "" {
+		m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "Add one statement after the command, for example `/query SELECT now()` or `/query CREATE INDEX ...`. Reads execute immediately; writes become a proposal first."})
+		return m, m.chat.Focus()
+	}
+	if app.IsReadQuery(statement) {
+		workCtx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
+		m.cancel = cancel
+		m.chatBusy = true
+		m.chatTooling = true
+		m.chatStage = "Running guarded read query"
+		m.chatSince = time.Now()
+		m.jobID++
+		return m, tea.Batch(m.inlineQueryCmd(workCtx, m.jobID, statement), pulse())
+	}
+	contract, err := app.BuildChangeContractForActor(statement, m.workspace, firstEnvironment("QUERYSHIFT_ACTOR"))
+	if err != nil {
+		m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "I couldn’t create a change proposal: " + err.Error()})
+		return m, m.chat.Focus()
+	}
+	run, err := app.NewVerifiedChangeRun(contract, app.DefaultChangePolicy(), time.Now())
+	if err != nil {
+		m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "I couldn’t initialize the verified change run: " + err.Error()})
+		return m, m.chat.Focus()
+	}
+	m.changeContract, m.changePlan, m.changeRun = contract, contract.Plan, run
+	m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: m.changeProposalChatText()})
+	return m, m.chat.Focus()
+}
+
+func (m Model) inlineQueryCmd(ctx context.Context, id int, statement string) tea.Cmd {
+	return func() tea.Msg {
+		result, err := m.deps.Query(ctx, m.connection, statement)
+		if err != nil {
+			return chatFinishedMsg{id: id, response: &app.ChatResponse{Text: "Query failed: " + err.Error(), Model: "sql-runner", Provider: "queryshift"}}
+		}
+		return chatFinishedMsg{id: id, response: &app.ChatResponse{Text: queryResultChatText(result), Model: "sql-runner", Provider: "queryshift"}}
+	}
+}
+
+func queryResultChatText(result *app.QueryResult) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Query completed in %s · %d rows", result.Duration.Round(time.Millisecond), len(result.Rows))
+	if result.Truncated {
+		b.WriteString(" · truncated at 100")
+	}
+	b.WriteString("\n\n")
+	if len(result.Columns) == 0 {
+		return b.String() + "No rows returned."
+	}
+	b.WriteString("| " + strings.Join(result.Columns, " | ") + " |\n")
+	b.WriteString("|" + strings.Repeat(" --- |", len(result.Columns)) + "\n")
+	for _, row := range result.Rows {
+		b.WriteString("| " + strings.Join(row, " | ") + " |\n")
+	}
+	return b.String()
+}
+
+func modernizationChatText(result *app.ModernizationResult) string {
+	if result == nil {
+		return "The modernization run completed without a result."
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Modernized SQL · **%s risk** · confidence %d/100 · validation %s\n\n```sql\n%s\n```", strings.ToUpper(result.RiskLevel), result.ConfidenceScore, passFail(result.Validation.Valid), strings.TrimSpace(result.Optimization.SQL))
+	if len(result.Optimization.Changes) > 0 {
+		b.WriteString("\n\nChanges:\n")
+		for _, change := range result.Optimization.Changes {
+			b.WriteString("- " + change + "\n")
+		}
+	}
+	if len(result.Optimization.Cautions) > 0 {
+		b.WriteString("\nCautions: " + strings.Join(result.Optimization.Cautions, "; "))
+	}
+	return b.String()
+}
+
+func (m Model) changeProposalChatText() string {
+	runStatus := "proposal created"
+	if m.changeRun != nil {
+		runStatus = strings.ReplaceAll(m.changeRun.Status, "_", " ")
+	}
+	return fmt.Sprintf("Created change proposal `%s` · **%s risk** · %s.\n\n```sql\n%s\n```\n\n%s\n\nNext: `/rehearse`, then `/approve` when required, then `/apply WRITE %s %s`.", m.changeContract.ID, strings.ToUpper(m.changeContract.Risk.Level), runStatus, m.changeContract.Statement, m.changeContract.Risk.LockImpact, m.changeContract.ID, m.changePlan.RequiredConfirmation)
+}
+
+func (m Model) runSlashRehearsal() (tea.Model, tea.Cmd) {
+	if m.changeRun == nil {
+		m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "There is no active change proposal. Create one with `/query <write SQL>`."})
+		return m, m.chat.Focus()
+	}
+	dsn := firstEnvironment("QUERYSHIFT_REHEARSAL_DATABASE_URL")
+	if dsn == "" {
+		m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "Set `QUERYSHIFT_REHEARSAL_DATABASE_URL` to a disposable clone or branch, then run `/rehearse` again."})
+		return m, m.chat.Focus()
+	}
+	workCtx, cancel := context.WithTimeout(m.ctx, 3*time.Minute)
+	m.cancel, m.rehearsalInline, m.chatBusy, m.chatTooling = cancel, true, true, true
+	m.chatStage, m.chatSince = "Rehearsing exact change contract", time.Now()
+	m.jobID++
+	return m, tea.Batch(m.rehearseCmd(workCtx, m.jobID, dsn, m.changeContract), pulse())
+}
+
+func (m Model) runSlashApproval() (tea.Model, tea.Cmd) {
+	if m.changeRun == nil {
+		m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "There is no active change proposal to approve."})
+		return m, m.chat.Focus()
+	}
+	key := []byte(firstEnvironment("QUERYSHIFT_APPROVAL_KEY"))
+	approval, err := app.ApproveChange(m.changeContract, m.changeRun.Policy, firstEnvironment("QUERYSHIFT_APPROVER"), splitEnvironmentList(firstEnvironment("QUERYSHIFT_APPROVER_ROLES")), key, time.Now())
+	if err == nil {
+		err = m.changeRun.RecordApproval(approval, key, time.Now())
+	}
+	if err != nil {
+		m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "Approval was not recorded: " + err.Error()})
+		return m, m.chat.Focus()
+	}
+	m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: fmt.Sprintf("Recorded signed approval `%s` from `%s`. Change run status: **%s**.", approval.ID, approval.Approver, strings.ReplaceAll(m.changeRun.Status, "_", " "))})
+	return m, m.chat.Focus()
+}
+
+func (m Model) runSlashApply(arguments string) (tea.Model, tea.Cmd) {
+	if m.changeRun == nil {
+		m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "There is no active change proposal to apply."})
+		return m, m.chat.Focus()
+	}
+	fields := strings.Fields(arguments)
+	if len(fields) < 3 || !strings.EqualFold(fields[0], "WRITE") || fields[1] != m.changeContract.ID {
+		m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: fmt.Sprintf("Use `/apply WRITE %s %s` to bind execution to this exact proposal.", m.changeContract.ID, m.changePlan.RequiredConfirmation)})
+		return m, m.chat.Focus()
+	}
+	confirmation := strings.Join(fields[2:], " ")
+	if strings.ToUpper(confirmation) != m.changePlan.RequiredConfirmation {
+		m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "The confirmation phrase does not match the reviewed contract."})
+		return m, m.chat.Focus()
+	}
+	workCtx, cancel := context.WithTimeout(m.ctx, 2*time.Minute)
+	m.cancel, m.changeInline, m.chatBusy, m.chatTooling = cancel, true, true, true
+	m.chatStage, m.chatSince = "Applying verified change run", time.Now()
+	m.jobID++
+	return m, tea.Batch(m.applyCmd(workCtx, m.jobID, m.changeContract, confirmation), pulse())
+}
+
+func (m Model) runSlashModernize(statement string) (tea.Model, tea.Cmd) {
+	statement = strings.TrimSpace(statement)
+	if statement == "" {
+		m.chatLog = append(m.chatLog, chatMessage{role: "queryshift", text: "Add SQL after the command, for example `/modernize SELECT TOP 10 * FROM dbo.orders`."})
+		return m, m.chat.Focus()
+	}
+	request := app.ModernizeRequest{SQL: statement, SourceDialect: dialects[m.dialect], LiveSchema: m.workspace != nil, ConnectionString: m.connection}
+	workCtx, cancel := context.WithTimeout(m.ctx, 4*time.Minute)
+	m.cancel, m.modernizeInline, m.chatBusy, m.chatTooling = cancel, true, true, true
+	m.chatStage, m.chatSince, m.agentRun = "Modernizing SQL", time.Now(), nil
+	m.jobID++
+	updates := m.deps.ModernizeStream(workCtx, request)
+	return m, tea.Batch(m.modernizeCmd(m.jobID, updates), pulse())
+}
+
+func (m Model) evidenceChatText() string {
+	var sections []string
+	for _, item := range m.chatEvidence {
+		content := item.Content
+		if len([]rune(content)) > 4000 {
+			content = string([]rune(content)[:4000]) + "\n… truncated"
+		}
+		sections = append(sections, fmt.Sprintf("### %s · %s\n`%s`\n\n%s", item.ID, item.Summary, item.Source, content))
+	}
+	return strings.Join(sections, "\n\n")
 }
 
 func looksLikeSQL(value string) bool {
@@ -1113,7 +1481,7 @@ func (m Model) updateConnect(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.loadLogs = []string{"Connecting to database endpoint…"}
 		m.loadSince = time.Now()
 		m.loadHostHint = app.FormatHostDisplay(value)
-		workCtx, cancel := context.WithCancel(m.ctx)
+		workCtx, cancel := context.WithTimeout(m.ctx, databaseWorkspaceLoadTimeout)
 		m.cancel = cancel
 		m.jobID++
 		updates := m.deps.LoadDatabaseStream(workCtx, value)
@@ -1246,7 +1614,7 @@ func (m Model) updateDatabase(key tea.KeyPressMsg, message tea.Msg) (tea.Model, 
 			m.loadLogs = []string{"Refreshing database schema…"}
 			m.loadSince = time.Now()
 			m.loadHostHint = app.FormatHostDisplay(m.connection)
-			workCtx, cancel := context.WithCancel(m.ctx)
+			workCtx, cancel := context.WithTimeout(m.ctx, databaseWorkspaceLoadTimeout)
 			m.cancel = cancel
 			updates := m.deps.LoadDatabaseStream(workCtx, m.connection)
 			return m, tea.Batch(m.databaseStreamCmd(m.jobID, true, updates), pulse())
@@ -1268,16 +1636,23 @@ func (m Model) updateDatabase(key tea.KeyPressMsg, message tea.Msg) (tea.Model, 
 			m.err = fmt.Errorf("write mode is locked; press Ctrl+W and type WRITE")
 			return m, nil
 		}
-		plan, err := app.AnalyzeChange(statement)
+		contract, err := app.BuildChangeContractForActor(statement, m.workspace, firstEnvironment("QUERYSHIFT_ACTOR"))
 		if err != nil {
 			m.err = err
 			return m, nil
 		}
-		m.changePlan = plan
+		m.changeContract = contract
+		m.changePlan = contract.Plan
+		run, err := app.NewVerifiedChangeRun(contract, app.DefaultChangePolicy(), time.Now())
+		if err != nil {
+			m.err = err
+			return m, nil
+		}
+		m.changeRun = run
 		m.err = nil
 		m.dbSQL.Blur()
 		m.confirm.SetValue("")
-		m.confirm.Placeholder = plan.RequiredConfirmation
+		m.confirm.Placeholder = contract.Plan.RequiredConfirmation
 		m.screen = screenChangeConfirm
 		return m, m.confirm.Focus()
 	case "i":
@@ -1330,6 +1705,38 @@ func (m Model) updateChangeConfirm(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.confirm.SetValue("")
 		m.screen = screenDatabase
 		return m, m.dbSQL.Focus()
+	case "ctrl+r":
+		rehearsalDSN := firstEnvironment("QUERYSHIFT_REHEARSAL_DATABASE_URL")
+		if rehearsalDSN == "" {
+			m.err = fmt.Errorf("set QUERYSHIFT_REHEARSAL_DATABASE_URL to a disposable clone or branch")
+			return m, nil
+		}
+		m.err = nil
+		m.confirm.Blur()
+		m.screen = screenRehearsing
+		workCtx, cancel := context.WithCancel(m.ctx)
+		m.cancel = cancel
+		m.jobID++
+		return m, tea.Batch(m.rehearseCmd(workCtx, m.jobID, rehearsalDSN, m.changeContract), pulse())
+	case "ctrl+a":
+		if m.changeRun == nil {
+			m.err = fmt.Errorf("change run was lost; review the change again")
+			return m, nil
+		}
+		key := []byte(firstEnvironment("QUERYSHIFT_APPROVAL_KEY"))
+		approval, err := app.ApproveChange(
+			m.changeContract,
+			m.changeRun.Policy,
+			firstEnvironment("QUERYSHIFT_APPROVER"),
+			splitEnvironmentList(firstEnvironment("QUERYSHIFT_APPROVER_ROLES")),
+			key,
+			time.Now(),
+		)
+		if err == nil {
+			err = m.changeRun.RecordApproval(approval, key, time.Now())
+		}
+		m.err = err
+		return m, nil
 	case "enter":
 		confirmation := strings.TrimSpace(strings.ToUpper(m.confirm.Value()))
 		if confirmation != m.changePlan.RequiredConfirmation {
@@ -1342,7 +1749,7 @@ func (m Model) updateChangeConfirm(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		workCtx, cancel := context.WithCancel(m.ctx)
 		m.cancel = cancel
 		m.jobID++
-		return m, tea.Batch(m.applyCmd(workCtx, m.jobID, m.dbSQL.Value(), confirmation), pulse())
+		return m, tea.Batch(m.applyCmd(workCtx, m.jobID, m.changeContract, confirmation), pulse())
 	}
 	var cmd tea.Cmd
 	m.confirm, cmd = m.confirm.Update(key)
@@ -1396,10 +1803,23 @@ func (m Model) queryCmd(ctx context.Context, id int, sql string) tea.Cmd {
 	}
 }
 
-func (m Model) applyCmd(ctx context.Context, id int, sql, confirmation string) tea.Cmd {
+func (m Model) applyCmd(ctx context.Context, id int, contract app.ChangeContract, confirmation string) tea.Cmd {
 	return func() tea.Msg {
-		result, err := m.deps.Apply(ctx, m.connection, sql, confirmation)
+		var result *app.ChangeResult
+		var err error
+		if m.changeRun != nil {
+			result, err = m.deps.ApplyVerified(ctx, m.connection, m.changeRun, confirmation, []byte(firstEnvironment("QUERYSHIFT_APPROVAL_KEY")), time.Now())
+		} else {
+			result, err = m.deps.Apply(ctx, m.connection, contract, confirmation)
+		}
 		return changeFinishedMsg{id: id, result: result, err: err}
+	}
+}
+
+func (m Model) rehearseCmd(ctx context.Context, id int, dsn string, contract app.ChangeContract) tea.Cmd {
+	return func() tea.Msg {
+		receipt, err := m.deps.Rehearse(ctx, dsn, contract, "REHEARSE "+contract.ID)
+		return rehearsalFinishedMsg{id: id, receipt: receipt, err: err}
 	}
 }
 
@@ -1410,8 +1830,124 @@ func (m Model) chatCmd(ctx context.Context, id int, request app.ChatRequest) tea
 	}
 }
 
+func (m Model) chatWithEvidenceCmd(ctx context.Context, id int, request app.ChatRequest, tools []app.ChatToolName) tea.Cmd {
+	return func() tea.Msg {
+		warnings := make([]string, 0)
+		var inspection *app.Inspection
+		var inspectionErr error
+		for _, tool := range tools {
+			switch tool {
+			case app.ChatToolHealthInspection, app.ChatToolWorkloadActivity, app.ChatToolQueryActivity, app.ChatToolChangeHistory:
+				if inspection == nil && inspectionErr == nil {
+					inspection, inspectionErr = m.deps.Inspect(ctx, m.connection, 120)
+				}
+				if inspectionErr != nil {
+					warnings = append(warnings, string(tool)+" failed: "+inspectionErr.Error())
+					request.Evidence = append(request.Evidence, app.ChatEvidence{
+						Kind: "collection_error", Source: "queryshift.inspect", ObservedAt: time.Now(),
+						Summary: string(tool) + " evidence could not be collected", Content: inspectionErr.Error(),
+					})
+					continue
+				}
+				request.Evidence = append(request.Evidence, app.InspectionChatEvidenceForTool(tool, inspection))
+			default:
+				evidence, err := app.WorkspaceChatEvidence(tool, request.Question, request.Workspace)
+				if err != nil {
+					warnings = append(warnings, string(tool)+" failed: "+err.Error())
+					continue
+				}
+				request.Evidence = append(request.Evidence, evidence)
+			}
+		}
+		response, err := m.deps.Chat(ctx, request)
+		return chatFinishedMsg{id: id, response: response, toolWarnings: warnings, err: err}
+	}
+}
+
+func (m Model) chatAgentStream(ctx context.Context, request app.ChatRequest, tools []app.ChatToolName) <-chan chatAgentUpdate {
+	updates := make(chan chatAgentUpdate, 12)
+	go func() {
+		defer close(updates)
+		send := func(update chatAgentUpdate) bool {
+			select {
+			case updates <- update:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
+		if !send(chatAgentUpdate{kind: "plan", detail: "Understanding request"}) {
+			return
+		}
+		if request.Workspace != nil {
+			if !send(chatAgentUpdate{kind: "context", detail: "Reading live schema"}) {
+				return
+			}
+		}
+		var inspection *app.Inspection
+		var inspectionErr error
+		for _, tool := range tools {
+			spec, ok := app.ChatToolDefinition(tool)
+			if !ok {
+				continue
+			}
+			if !send(chatAgentUpdate{kind: "tool call", detail: spec.Activity}) {
+				return
+			}
+			var evidence app.ChatEvidence
+			var err error
+			if app.IsInspectionChatTool(tool) {
+				if inspection == nil && inspectionErr == nil {
+					inspection, inspectionErr = m.deps.Inspect(ctx, m.connection, 120)
+				}
+				err = inspectionErr
+				if err == nil {
+					evidence = app.InspectionChatEvidenceForTool(tool, inspection)
+					evidence.Summary = strings.Replace(evidence.Summary, "Deterministic read-only database health inspection", "Inspected database health", 1)
+				}
+			} else {
+				evidence, err = app.WorkspaceChatEvidence(tool, request.Question, request.Workspace)
+			}
+			if err != nil {
+				request.Evidence = append(request.Evidence, app.ChatEvidence{
+					Kind: "collection_error", Source: spec.Source, ObservedAt: time.Now(),
+					Summary: string(tool) + " evidence could not be collected", Content: err.Error(),
+				})
+				if !send(chatAgentUpdate{kind: "tool error", detail: spec.Activity + " failed · " + err.Error(), visible: true}) {
+					return
+				}
+			} else {
+				request.Evidence = append(request.Evidence, evidence)
+				if !send(chatAgentUpdate{kind: "tool result", detail: evidence.Summary, visible: true}) {
+					return
+				}
+			}
+		}
+		if !send(chatAgentUpdate{kind: "model", detail: "Writing evidence-backed answer"}) {
+			return
+		}
+		response, err := m.deps.Chat(ctx, request)
+		if err != nil {
+			send(chatAgentUpdate{err: err})
+			return
+		}
+		send(chatAgentUpdate{response: response})
+	}()
+	return updates
+}
+
+func (m Model) chatProgressCmd(id int, updates <-chan chatAgentUpdate) tea.Cmd {
+	return func() tea.Msg {
+		update, ok := <-updates
+		if !ok {
+			return chatFinishedMsg{id: id, err: fmt.Errorf("agent event stream closed before a response")}
+		}
+		return chatProgressMsg{id: id, update: update, updates: updates}
+	}
+}
+
 func pulse() tea.Cmd {
-	return tea.Tick(240*time.Millisecond, func(t time.Time) tea.Msg { return pulseMsg(t) })
+	return tea.Tick(110*time.Millisecond, func(t time.Time) tea.Msg { return pulseMsg(t) })
 }
 
 func bootTick() tea.Cmd {
@@ -1421,7 +1957,7 @@ func bootTick() tea.Cmd {
 func (m *Model) resize() {
 	contentWidth := m.shellWidth()
 	contentHeight := max(8, m.height-9)
-	m.chat.SetWidth(max(36, contentWidth-chatComposerStyle.GetHorizontalFrameSize()))
+	m.chat.SetWidth(max(36, contentWidth-chatComposerStyle.GetHorizontalFrameSize()-chatInputStyle.GetHorizontalFrameSize()))
 	m.dsn.SetWidth(min(94, contentWidth-10))
 	m.sql.SetWidth(contentWidth - panelStyle.GetHorizontalFrameSize())
 	m.sql.SetHeight(max(8, contentHeight-12))
@@ -1647,15 +2183,12 @@ func (m Model) shellWidth() int {
 
 func (m Model) header(width int) string {
 	product := brandStyle.Render("queryshift") + mutedStyle.Render("  /  "+strings.ToLower(screenName(m.screen)))
-	right := disconnectedStyle.Render("○ database required")
+	right := mutedStyle.Render("no database")
 	if m.workspace != nil {
-		right = goodStyle.Render("● "+m.workspace.Database) + mutedStyle.Render("  ·  read")
+		right = goodStyle.Render(m.workspace.Database) + mutedStyle.Render("  ·  read")
 	}
 	if m.writeMode {
-		right = warnStyle.Render("● " + m.workspace.Database + "  ·  write armed")
-	}
-	if width >= 110 && m.workspace != nil {
-		right = mutedStyle.Render(fitCompactHost(m.workspace.Host, 40)) + "  " + right
+		right = warnStyle.Render(m.workspace.Database + "  ·  write armed")
 	}
 	return "\n" + spread(product, right, width) + "\n"
 }
@@ -1674,6 +2207,8 @@ func (m Model) body(width, height int) string {
 			body = m.workingView("Inspecting database", "Collecting catalog, workload, index, vacuum, and configuration evidence")
 		case screenReport:
 			body = labelStyle.Render("DATABASE REPORT") + "\n" + m.viewport.View()
+		case screenEvidence:
+			body = labelStyle.Render("ANSWER EVIDENCE") + "\n" + m.viewport.View()
 		case screenModernizer:
 			body = m.modernizerView(width)
 		case screenModernizing:
@@ -1692,10 +2227,12 @@ func (m Model) body(width, height int) string {
 			body = m.changeConfirmView(width)
 		case screenApplying:
 			body = m.workingView("Versioning and applying change", "Snapshotting schema, writing the migration journal, then executing one short transaction")
+		case screenRehearsing:
+			body = m.workingView("Rehearsing change", "Applying the exact contract to the disposable target, then verifying its schema and probes")
 		}
 	}
 	vertical := lipgloss.Top
-	if m.helpOpen || m.screen == screenConnect || m.screen == screenInspecting || m.screen == screenModernizing || m.screen == screenAbout || m.screen == screenDatabaseLoading || m.screen == screenWriteUnlock || m.screen == screenChangeConfirm || m.screen == screenApplying {
+	if m.helpOpen || m.screen == screenConnect || m.screen == screenInspecting || m.screen == screenModernizing || m.screen == screenAbout || m.screen == screenDatabaseLoading || m.screen == screenWriteUnlock || m.screen == screenChangeConfirm || m.screen == screenApplying || m.screen == screenRehearsing {
 		vertical = lipgloss.Center
 	}
 	return lipgloss.Place(width, height, lipgloss.Left, vertical, body)
@@ -1704,67 +2241,44 @@ func (m Model) body(width, height int) string {
 func (m Model) homeView(width, height int) string {
 	columnWidth := width
 	composerWidth := max(42, columnWidth)
-	messageWidth := min(108, max(36, columnWidth-4))
-	messageTextStyle := lipgloss.NewStyle().Foreground(colorInk).Width(messageWidth)
+	messageWidth := min(96, max(36, columnWidth-2))
 
-	var transcript strings.Builder
-	if len(m.chatLog) == 0 {
-		transcript.WriteString(heroStyle.Render("QueryShift") + "\n")
-		transcript.WriteString(mutedStyle.Render("Database work, with a safety boundary."))
-		transcript.WriteString("\n\n")
-		if m.workspace == nil {
-			transcript.WriteString(disconnectedStyle.Render("○ DATABASE NOT CONNECTED") + "\n")
-			transcript.WriteString(mutedStyle.Render("Type /connect or press Ctrl+P to browse every command."))
-		} else {
-			transcript.WriteString(goodStyle.Render("● Live schema ready") + "\n")
-			transcript.WriteString(mutedStyle.Render("Ask about tables, health, queries, migrations, or paste legacy SQL."))
-		}
-	}
-
+	turns := make([]string, 0, len(m.chatLog))
 	for _, message := range m.chatLog {
-		transcript.WriteString("\n\n")
 		switch message.role {
 		case "you":
-			label := userLabelStyle.Render("YOU")
-			if message.meta != "" {
-				label += mutedStyle.Render("  ·  " + message.meta)
-			}
-			bubble := lipgloss.NewStyle().Background(colorPanel).BorderStyle(lipgloss.ThickBorder()).
-				BorderLeft(true).BorderForeground(colorBlue).Padding(0, 2).Width(messageWidth).Render(message.text)
-			transcript.WriteString(label + "\n" + bubble)
+			turns = append(turns, renderUserTurn(message.text, messageWidth))
 		case "status":
-			transcript.WriteString(mutedStyle.Render("─  ") + goodStyle.Render(message.text))
-		default:
-			label := assistantLabelStyle.Render("QUERYSHIFT")
-			if message.meta != "" {
-				label += mutedStyle.Render("  ·  " + message.meta)
+			// Status belongs in the header. Preserve older session entries only as
+			// quiet receipts so they cannot dominate the conversation.
+			turns = append(turns, chatReceiptStyle.Render("✓ "+message.text))
+		case "tool":
+			marker := goodStyle.Render("✓ ")
+			if message.meta == "tool error" || message.meta == "evidence unavailable" {
+				marker = warnStyle.Render("! ")
 			}
-			transcript.WriteString(label + "\n" + messageTextStyle.Render(message.text))
+			turns = append(turns, marker+chatReceiptStyle.Render(message.text))
+		default:
+			turns = append(turns, assistantLabelStyle.Render("queryshift")+"\n"+renderChatMarkdown(message.text, messageWidth))
 		}
 	}
+	transcript := strings.Join(turns, "\n\n")
 	if m.chatBusy {
-		frames := []string{"█▁▁▁", "▁█▁▁", "▁▁█▁", "▁▁▁█", "▁▁█▁", "▁█▁▁"}
 		elapsed := time.Since(m.chatSince).Round(time.Second)
-		phase := "Grounding in the live schema"
-		if elapsed >= 2*time.Second {
-			phase = "Reasoning with " + m.modelName()
+		stage := m.chatStage
+		if stage == "" {
+			stage = chatPhase(elapsed, m.chatTooling)
 		}
-		if elapsed >= 8*time.Second {
-			phase = "Composing a grounded response"
+		loader := agentLoader(m.pulse)
+		stageWidth := max(12, messageWidth-lipgloss.Width(loader)-12)
+		activity := "  " + loader + "  " + statusValueStyle.Render(strings.TrimSpace(fit(stage, stageWidth))) + mutedStyle.Render("  "+elapsed.String())
+		if transcript == "" {
+			transcript = activity
+		} else {
+			// Keep the active work attached to the submitted turn. The composer
+			// stays visually quiet and contains controls only.
+			transcript += "\n" + activity
 		}
-		transcript.WriteString("\n\n" + assistantLabelStyle.Render("QUERYSHIFT") + "  " + dangerBadgeStyle.Render("AGENT RUNNING") + "\n")
-		transcript.WriteString(goodStyle.Render(frames[m.pulse%len(frames)]) + "  " +
-			statusValueStyle.Render(phase) + mutedStyle.Render("  ·  "+elapsed.String()+"  ·  esc to interrupt"))
-	}
-
-	databaseMeta := disconnectedStyle.Render("○ DATABASE NOT CONNECTED")
-	modeMeta := disconnectedStyle.Render("CONNECT REQUIRED")
-	if m.workspace != nil {
-		databaseMeta = goodStyle.Render("● CONNECTED  "+m.workspace.Database) + mutedStyle.Render(" @ "+fitCompactHost(m.workspace.Host, 32))
-		modeMeta = goodStyle.Render("READ MODE")
-	}
-	if m.writeMode {
-		modeMeta = warnStyle.Render("WRITE ARMED")
 	}
 	maxCommands := 8
 	if height < 30 {
@@ -1775,39 +2289,34 @@ func (m Model) homeView(width, height int) string {
 
 	inside := composerWidth - chatComposerStyle.GetHorizontalFrameSize()
 
-	// Top Context Strip inside composer (OpenCode signature status bar)
-	modelPill := mutedStyle.Render("queryshift") + mutedStyle.Render("  ·  bedrock/") + statusValueStyle.Render(m.modelName())
 	currentVal := strings.TrimSpace(m.chat.Value())
-	if strings.HasPrefix(currentVal, "/") {
-		modelPill += "  " + badgeStyle.Render("COMMAND")
-	} else if strings.HasPrefix(currentVal, "@") || strings.Contains(currentVal, " @") {
-		modelPill += "  " + lipgloss.NewStyle().Bold(true).Foreground(colorCanvas).Background(colorBlue).Padding(0, 1).Render("TABLE CONTEXT")
-	} else if strings.HasPrefix(currentVal, "!") {
-		modelPill += "  " + dangerBadgeStyle.Render("SQL RUNNER")
-	}
 
-	topContextBar := spread(modelPill, modeMeta, inside)
-
-	// Bottom Action Strip inside composer
+	// The composer footer contains controls only. Active work is rendered beside
+	// the submitted query above, where its relationship is unambiguous.
 	var bottomActionStrip string
 	if m.chatBusy {
-		elapsed := time.Since(m.chatSince).Round(time.Second)
-		leftBusy := goodStyle.Render("● Running agent (" + elapsed.String() + ")")
-		rightBusy := helpKeys("enter", "queue", "esc", "interrupt")
-		bottomActionStrip = spread(leftBusy, rightBusy, inside)
+		bottomActionStrip = spread(helpKeys("enter", "queue"), helpKeys("esc", "interrupt"), inside)
 	} else {
-		leftAction := mutedStyle.Render("⏎ send  ·  ctrl+j newline  ·  / commands  ·  @ tables  ·  ↑ history")
+		leftAction := helpKeys("enter", "send", "ctrl+j", "newline", "/", "commands", "@", "tables")
+		if strings.HasPrefix(currentVal, "/") {
+			leftAction = badgeStyle.Render("COMMAND") + "  " + leftAction
+		} else if strings.HasPrefix(currentVal, "@") || strings.Contains(currentVal, " @") {
+			leftAction = keyStyle.Render("TABLE CONTEXT") + "  " + leftAction
+		} else if strings.HasPrefix(currentVal, "!") {
+			leftAction = dangerBadgeStyle.Render("SQL RUNNER") + "  " + leftAction
+		}
 		charCount := len([]rune(m.chat.Value()))
 		rightAction := ""
 		if charCount > 0 {
 			rightAction = mutedStyle.Render(fmt.Sprintf("%d chars", charCount))
 		} else {
-			rightAction = keyStyle.Render("ctrl+p") + mutedStyle.Render(" commands")
+			rightAction = keyStyle.Render("ctrl+p") + mutedStyle.Render(" palette")
 		}
 		bottomActionStrip = spread(leftAction, rightAction, inside)
 	}
 
-	composerContent := topContextBar + "\n" + m.chat.View() + "\n" + bottomActionStrip
+	inputSurface := chatInputStyle.Width(inside).Render(m.chat.View())
+	composerContent := inputSurface + "\n" + bottomActionStrip
 	composer := chatComposerStyle.Width(composerWidth).Render(composerContent)
 
 	inputBlock := ""
@@ -1821,13 +2330,9 @@ func (m Model) homeView(width, height int) string {
 		queueText := fmt.Sprintf("%d queued  ·  %s", len(m.chatQueue), strings.TrimSpace(fit(next, max(12, composerWidth-18))))
 		inputBlock += queuedPromptStyle.Width(composerWidth).Render(queueText) + "\n"
 	}
-	hint := helpKeys("enter", "send", "ctrl+j", "new line", "ctrl+p", "commands")
-	if m.chatBusy {
-		hint = helpKeys("enter", "queue", "esc", "interrupt")
-	}
-	inputBlock += composer + "\n" + spread(databaseMeta, hint, composerWidth)
+	inputBlock += composer
 
-	top := transcript.String()
+	top := transcript
 	availableTranscript := max(3, height-lipgloss.Height(inputBlock)-1)
 	top = windowLines(top, availableTranscript, m.chatScroll)
 	if m.chatScroll > 0 {
@@ -1939,13 +2444,13 @@ func (m Model) connectView(width int) string {
 		status = "\n\n" + goodStyle.Render(fmt.Sprintf("PASTE RECEIVED  %d characters securely captured", count))
 	}
 	if m.connection != "" {
-		status += "\n" + goodStyle.Render("SESSION READY  Live-schema checks are available to the Modernizer")
+		status += "\n" + goodStyle.Render("SESSION READY  Live schema context will be added to chat")
 	}
 	errText := m.errorView()
 	panelWidth := min(104, width)
 	return renderPanel(panelStyle, panelWidth,
 		overlineStyle.Render("DATABASE CONNECTION")+"\n"+
-			titleStyle.Render("Open a live database workspace")+"\n\n"+
+			titleStyle.Render("Add live database context")+"\n\n"+
 			mutedStyle.Render("Paste with Cmd+V or Ctrl+V. QueryShift masks the value, keeps it only in memory, and never writes it to .env or history.")+"\n\n"+
 			labelStyle.Render("CONNECTION STRING")+"\n"+m.dsn.View()+status+errText)
 }
@@ -1954,7 +2459,7 @@ func (m Model) databaseView(width, height int) string {
 	if m.workspace == nil {
 		return m.workingView("Loading database workspace", "Reading the live catalog")
 	}
-	names := []string{"Overview", "Schema", "ER map", "SQL console"}
+	names := []string{"Overview", "Schema", "ER map", "Change"}
 	mainWidth := width
 	var nav string
 	if width >= 112 {
@@ -2005,7 +2510,7 @@ func (m Model) databaseView(width, height int) string {
 				labelStyle.Render("i")+"  Run full health inspection\n"+
 				labelStyle.Render("2")+"  Browse tables and columns\n"+
 				labelStyle.Render("3")+"  Open relationship map\n"+
-				labelStyle.Render("4")+"  Query or change data")
+				labelStyle.Render("4")+"  Review a change or run a query")
 		}
 	case 1, 2:
 		m.viewport.SetWidth(mainWidth - panelStyle.GetHorizontalFrameSize())
@@ -2013,6 +2518,12 @@ func (m Model) databaseView(width, height int) string {
 		content = renderPanel(panelStyle, mainWidth, m.viewport.View())
 	case 3:
 		access := goodStyle.Render("READ MODE")
+		editorTitle := "READ QUERY"
+		statement := strings.TrimSpace(m.dbSQL.Value())
+		if statement != "" && !app.IsReadQuery(statement) {
+			editorTitle = "CHANGE PROPOSAL"
+			access = warnStyle.Render("REVIEW REQUIRED")
+		}
 		if m.writeMode {
 			access = warnStyle.Render("WRITE MODE ARMED")
 		}
@@ -2024,15 +2535,15 @@ func (m Model) databaseView(width, height int) string {
 				last = string(lastRunes[:max(12, mainWidth-17)]) + "…"
 			}
 			content = renderPanel(panelStyle, mainWidth,
-				spread(overlineStyle.Render("SQL EDITOR"), access, mainWidth-panelStyle.GetHorizontalFrameSize())+"\n"+
+				spread(overlineStyle.Render(editorTitle), access, mainWidth-panelStyle.GetHorizontalFrameSize())+"\n"+
 					m.dbSQL.View()+m.errorView()+"\n"+mutedStyle.Render(last))
 			break
 		}
 		outputHeight := max(5, height-lipgloss.Height(m.dbSQL.View())-15)
 		m.viewport.SetWidth(mainWidth - panelStyle.GetHorizontalFrameSize())
 		m.viewport.SetHeight(outputHeight)
-		editor := renderPanel(panelStyle, mainWidth, spread(overlineStyle.Render("SQL EDITOR"), access, mainWidth-panelStyle.GetHorizontalFrameSize())+"\n\n"+m.dbSQL.View()+m.errorView())
-		output := renderPanel(panelStyle, mainWidth, overlineStyle.Render("OUTPUT")+"\n\n"+m.viewport.View())
+		editor := renderPanel(panelStyle, mainWidth, spread(overlineStyle.Render(editorTitle), access, mainWidth-panelStyle.GetHorizontalFrameSize())+"\n\n"+m.dbSQL.View()+m.errorView())
+		output := renderPanel(panelStyle, mainWidth, overlineStyle.Render("LAST RESULT")+"\n\n"+m.viewport.View())
 		content = editor + "\n" + output
 	}
 	main := heading + "\n\n" + content
@@ -2042,7 +2553,7 @@ func (m Model) databaseView(width, height int) string {
 	var tabs []string
 	for i, name := range names {
 		if width < 90 {
-			name = []string{"Home", "Schema", "ER", "SQL"}[i]
+			name = []string{"Home", "Schema", "ER", "Change"}[i]
 		}
 		if i == m.dbTab {
 			tabs = append(tabs, activeTabStyle.Render(fmt.Sprintf("%d %s", i+1, name)))
@@ -2062,24 +2573,66 @@ func (m Model) writeUnlockView(width int) string {
 }
 
 func (m Model) changeConfirmView(width int) string {
-	statement := strings.TrimSpace(m.dbSQL.Value())
+	statement := strings.TrimSpace(m.changeContract.Statement)
 	if len([]rune(statement)) > 900 {
 		statement = string([]rune(statement)[:900]) + "…"
 	}
-	risk := goodStyle.Render("CONTROLLED")
-	if m.changePlan.Destructive {
-		risk = errorStyle.Render("DESTRUCTIVE")
+	risk := goodStyle.Render(strings.ToUpper(m.changeContract.Risk.Level))
+	if m.changeContract.Risk.Level == "elevated" || m.changeContract.Risk.Level == "high" {
+		risk = warnStyle.Render(strings.ToUpper(m.changeContract.Risk.Level))
+	} else if m.changeContract.Risk.Level == "critical" {
+		risk = errorStyle.Render("CRITICAL")
+	}
+	objects := "none detected"
+	if len(m.changeContract.AffectedObjects) > 0 {
+		parts := make([]string, 0, len(m.changeContract.AffectedObjects))
+		for _, object := range m.changeContract.AffectedObjects {
+			parts = append(parts, object.Operation+" "+object.Name)
+		}
+		objects = strings.Join(parts, "  ·  ")
+	}
+	verification := make([]string, 0, len(m.changeContract.Verification))
+	for _, probe := range m.changeContract.Verification {
+		verification = append(verification, probe.ID+" "+probe.Description)
+	}
+	contractIdentity := m.changeContract.ID
+	if len(m.changeContract.ContractSHA256) >= 12 {
+		contractIdentity += "  ·  sha256:" + m.changeContract.ContractSHA256[:12]
+	}
+	runStatus := "NOT INITIALIZED"
+	policyLine := "policy unavailable"
+	if m.changeRun != nil {
+		runStatus = strings.ToUpper(strings.ReplaceAll(m.changeRun.Status, "_", " "))
+		policyLine = m.changeRun.Policy.Name + "  ·  " + m.changeRun.Decision.Outcome
 	}
 	return renderPanel(dangerPanelStyle, min(100, width),
-		spread(overlineStyle.Render("CHANGE PREVIEW"), risk, min(100, width)-dangerPanelStyle.GetHorizontalFrameSize())+"\n"+
+		spread(overlineStyle.Render("CHANGE REVIEW"), risk, min(100, width)-dangerPanelStyle.GetHorizontalFrameSize())+"\n"+
 			titleStyle.Render(m.changePlan.Summary)+"\n\n"+
 			codeStyle.Render(statement)+"\n\n"+
-			labelStyle.Render("VERSIONED SAFETY PLAN")+"\n"+
+			labelStyle.Render("IMMUTABLE CHANGE CONTRACT")+"\n"+
+			statusValueStyle.Render(contractIdentity)+"\n"+
+			mutedStyle.Render("Target "+m.changeContract.Target.Database+"  ·  schema "+shortDigest(m.changeContract.SchemaSHA256))+"\n"+
+			mutedStyle.Render("Affected  "+objects)+"\n\n"+
+			labelStyle.Render("VERIFIED CHANGE RUN")+"\n"+
+			statusValueStyle.Render(runStatus)+"\n"+
+			mutedStyle.Render(policyLine)+"\n"+
+			mutedStyle.Render("ctrl+r rehearse on disposable target  ·  ctrl+a create signed approval from environment identity")+"\n\n"+
+			labelStyle.Render("RISK & RECOVERY")+"\n"+
 			mutedStyle.Render("Pre-change schema snapshot  ·  checksummed SQL migration  ·  one transaction")+"\n"+
 			statusValueStyle.Render(strings.ToUpper(m.changePlan.RecoveryLevel))+"\n"+
-			mutedStyle.Render(m.changePlan.RecoveryNote)+"\n\n"+
+			mutedStyle.Render(m.changePlan.RecoveryNote)+"\n"+
+			mutedStyle.Render(m.changeContract.Risk.LockImpact+"  ·  "+m.changeContract.Risk.DataImpact)+"\n\n"+
+			labelStyle.Render("REQUIRED VERIFICATION")+"\n"+
+			mutedStyle.Render(strings.Join(verification, "\n"))+"\n\n"+
 			mutedStyle.Render("30s statement timeout  ·  3s lock timeout  ·  automatic rollback on execution failure")+"\n\n"+
 			warnStyle.Render("Type "+m.changePlan.RequiredConfirmation+" to commit")+"\n"+m.confirm.View()+m.errorView())
+}
+
+func shortDigest(value string) string {
+	if len(value) <= 12 {
+		return value
+	}
+	return value[:12]
 }
 
 func (m Model) modernizerView(width int) string {
@@ -2119,13 +2672,11 @@ func (m Model) modernizerResultView() string {
 }
 
 func (m Model) modernizingView(width int) string {
-	frames := []string{"◐", "◓", "◑", "◒"}
-	indicator := frames[m.pulse%len(frames)]
 	panelWidth := min(108, max(58, width))
 	innerWidth := panelWidth - panelStyle.GetHorizontalFrameSize()
 
 	var b strings.Builder
-	b.WriteString(goodStyle.Render(indicator+"  ") + titleStyle.Render("Agent workflow running"))
+	b.WriteString(animatedScanner(m.pulse, 8) + "  " + titleStyle.Render("Agent workflow running"))
 	b.WriteString("\n" + mutedStyle.Render("Mapper → transpiler → validator → optimizer → equivalence judge"))
 	b.WriteString("\n\n" + overlineStyle.Render("LIVE EXECUTION TRACE") + "\n")
 
@@ -2190,8 +2741,6 @@ func numberData(data map[string]any, key string) float64 {
 }
 
 func (m Model) databaseLoadingView(width int) string {
-	frames := []string{"◐", "◓", "◑", "◒"}
-	indicator := frames[m.pulse%len(frames)]
 	panelWidth := min(104, max(58, width))
 	innerWidth := panelWidth - panelStyle.GetHorizontalFrameSize()
 
@@ -2211,7 +2760,7 @@ func (m Model) databaseLoadingView(width int) string {
 		title = "Refreshing database workspace"
 	}
 
-	headerLeft := goodStyle.Render(indicator+"  ") + titleStyle.Render(title) + "  " + badgeStyle.Render(strings.ToUpper(stageText))
+	headerLeft := animatedScanner(m.pulse, 8) + "  " + titleStyle.Render(title) + "  " + badgeStyle.Render(strings.ToUpper(stageText))
 	headerRight := mutedStyle.Render(timerStr)
 	b.WriteString(spread(headerLeft, headerRight, innerWidth))
 	b.WriteString("\n" + mutedStyle.Render("Establishing read-only connection, probing capabilities, and introspecting schema"))
@@ -2244,7 +2793,9 @@ func (m Model) databaseLoadingView(width int) string {
 
 	hostLower := strings.ToLower(m.loadHostHint + " " + m.connection)
 	isServerless := strings.Contains(hostLower, "neon.tech") || strings.Contains(hostLower, "pooler") || strings.Contains(hostLower, "supabase") || strings.Contains(hostLower, "cockroach")
-	if elapsed >= 3*time.Second || isServerless {
+	if isServerless && elapsed >= 12*time.Second {
+		b.WriteString("\n\n" + lipgloss.NewStyle().Foreground(colorAmber).Render("⚠ No response after the normal serverless wake-up window. QueryShift will stop automatically at 30s."))
+	} else if elapsed >= 3*time.Second || isServerless {
 		b.WriteString("\n\n" + lipgloss.NewStyle().Foreground(colorAmber).Render("⚡ Serverless database detected. If compute was suspended, wake-up takes 3–12s."))
 	}
 
@@ -2253,10 +2804,8 @@ func (m Model) databaseLoadingView(width int) string {
 }
 
 func (m Model) workingView(title, detail string) string {
-	frames := []string{"◐", "◓", "◑", "◒"}
-	indicator := frames[m.pulse%len(frames)]
 	return renderPanel(panelStyle, min(88, max(50, m.shellWidth())),
-		goodStyle.Render(indicator+"  ")+titleStyle.Render(title)+"\n\n"+mutedStyle.Render(detail)+"\n\n"+warnStyle.Render("Esc cancels this run safely."))
+		animatedScanner(m.pulse, 8)+"  "+titleStyle.Render(title)+"\n\n"+mutedStyle.Render(detail)+"\n\n"+warnStyle.Render("Esc cancels this run safely."))
 }
 
 func (m Model) aboutView(width int) string {
@@ -2285,9 +2834,9 @@ func (m Model) footer(width int) string {
 		}
 	case screenConnect:
 		help = helpKeys("cmd/ctrl+v", "paste", "ctrl+e", "from env", "enter", "connect", "f1", "help", "esc", "back")
-	case screenInspecting, screenModernizing, screenDatabaseLoading, screenApplying:
+	case screenInspecting, screenModernizing, screenDatabaseLoading, screenApplying, screenRehearsing:
 		help = helpKeys("esc", "cancel", "f1", "help", "ctrl+c", "quit")
-	case screenReport:
+	case screenReport, screenEvidence:
 		help = helpKeys("↑/↓", "scroll", "pgup/pgdn", "page", "f1", "help", "esc", "home")
 	case screenModernizer:
 		help = helpKeys("ctrl+d", "dialect", "ctrl+l", "live schema", "ctrl+r", "run agents", "f1", "help", "esc", "home")
@@ -2297,8 +2846,10 @@ func (m Model) footer(width int) string {
 		help = helpKeys("f1", "help", "esc", "home")
 	case screenDatabase:
 		help = helpKeys("1-4/tab", "panels", "ctrl+r", "run/refresh", "ctrl+w", "write unlock", "i", "inspect", "f1", "help")
-	case screenWriteUnlock, screenChangeConfirm:
+	case screenWriteUnlock:
 		help = helpKeys("enter", "confirm", "esc", "cancel", "f1", "help")
+	case screenChangeConfirm:
+		help = helpKeys("ctrl+r", "rehearse", "ctrl+a", "approve", "enter", "apply", "esc", "cancel")
 	}
 	if width < 110 && !m.helpOpen {
 		switch m.screen {
@@ -2312,10 +2863,18 @@ func (m Model) footer(width int) string {
 			help = helpKeys("ctrl+v", "paste", "enter", "connect", "esc", "back")
 		case screenModernizer:
 			help = helpKeys("ctrl+r", "run", "f1", "help", "esc", "back")
-		case screenReport, screenModernizerResult:
+		case screenReport, screenEvidence, screenModernizerResult:
 			help = helpKeys("↑/↓", "scroll", "f1", "help", "esc", "back")
 		case screenDatabase:
-			help = helpKeys("1-4", "panels", "ctrl+r", "run", "f1", "help")
+			if m.dbTab == 3 {
+				if width < 90 {
+					help = helpKeys("ctrl+r", "run", "ctrl+w", "unlock")
+				} else {
+					help = helpKeys("ctrl+r", "run or review", "ctrl+w", "unlock", "esc", "chat")
+				}
+			} else {
+				help = helpKeys("1-4", "panels", "ctrl+r", "refresh", "f1", "help")
+			}
 		}
 	}
 	if m.helpOpen {
@@ -2357,6 +2916,7 @@ func (m Model) helpView(width int) string {
 			helpRow("Enter", "Send from the composer", inside) + "\n" +
 			helpRow("Ctrl+J", "Insert a new line", inside) + "\n" +
 			helpRow("Ctrl+P / /", "Open command palette", inside) + "\n" +
+			helpRow("/help", "Open this help", inside) + "\n" +
 			helpRow("↑ / ↓", "Choose a command", inside) + "\n" +
 			helpRow("PgUp / PgDn", "Browse conversation", inside) + "\n" +
 			helpRow("Cmd/Ctrl+V", "Paste connection", inside) + "\n" +
@@ -2370,6 +2930,7 @@ func (m Model) helpView(width int) string {
 		helpRow("Enter", "Send from the composer", leftWidth) + "\n" +
 		helpRow("Ctrl+J", "Insert a new line", leftWidth) + "\n" +
 		helpRow("Ctrl+P / /", "Open command palette", leftWidth) + "\n" +
+		helpRow("/help", "Open this help", leftWidth) + "\n" +
 		helpRow("↑ / ↓", "Choose a command", leftWidth) + "\n" +
 		helpRow("PgUp / PgDn", "Browse conversation", leftWidth) + "\n" +
 		helpRow("Esc", "Go back or cancel", leftWidth) + "\n" +
@@ -2389,8 +2950,8 @@ func (m Model) helpView(width int) string {
 		helpRow("Ctrl+R", "Run the agent pipeline", leftWidth) + "\n" +
 		helpRow("Tab / ← / →", "Change result tab", leftWidth) + "\n\n" +
 		overlineStyle.Render("DATABASE WORKSPACE") + "\n" +
-		helpRow("1 / 2 / 3 / 4", "Overview / schema / ER / SQL", leftWidth) + "\n" +
-		helpRow("Ctrl+R", "Run query or refresh", leftWidth) + "\n" +
+		helpRow("1 / 2 / 3 / 4", "Overview / schema / ER / change", leftWidth) + "\n" +
+		helpRow("Ctrl+R", "Run read or review change", leftWidth) + "\n" +
 		helpRow("Ctrl+W", "Unlock write mode", leftWidth) + "\n" +
 		helpRow("i", "Run health inspection", leftWidth) + "\n\n" +
 		overlineStyle.Render("SAFETY") + "\n" +
@@ -2411,6 +2972,84 @@ func (m Model) modelName() string {
 		return configured
 	}
 	return "deepseek.v3.2"
+}
+
+func (m Model) evidenceContent() string {
+	if len(m.chatEvidence) == 0 {
+		return "No answer evidence is available."
+	}
+	var sections []string
+	for _, item := range m.chatEvidence {
+		heading := item.ID
+		if heading == "" {
+			heading = strings.ToUpper(item.Kind)
+		}
+		meta := item.Source
+		if !item.ObservedAt.IsZero() {
+			meta += " · " + item.ObservedAt.Local().Format("2006-01-02 15:04:05")
+		}
+		sections = append(sections, labelStyle.Render(heading+"  "+item.Summary)+"\n"+mutedStyle.Render(meta)+"\n\n"+item.Content)
+	}
+	return strings.Join(sections, "\n\n"+rule(max(24, m.viewport.Width()))+"\n\n")
+}
+
+func chatPhase(elapsed time.Duration, collectingEvidence bool) string {
+	switch {
+	case collectingEvidence && elapsed < 8*time.Second:
+		return "Collecting read-only evidence"
+	case elapsed >= 8*time.Second:
+		return "Composing response"
+	case elapsed >= 2*time.Second:
+		return "Reasoning with live context"
+	default:
+		return "Grounding in schema"
+	}
+}
+
+// animatedScanner is a compact, bidirectional activity signal. The bright
+// head and two-cell trail stay legible without the visual jitter of a spinner.
+func animatedScanner(step, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	positionAt := func(value int) int {
+		if width == 1 {
+			return 0
+		}
+		cycle := 2*width - 2
+		position := value % cycle
+		if position < 0 {
+			position += cycle
+		}
+		if position >= width {
+			position = cycle - position
+		}
+		return position
+	}
+
+	head := positionAt(step)
+	trailOne := positionAt(step - 1)
+	trailTwo := positionAt(step - 2)
+	var b strings.Builder
+	for index := 0; index < width; index++ {
+		switch index {
+		case head:
+			b.WriteString(goodStyle.Render("█"))
+		case trailOne:
+			b.WriteString(lipgloss.NewStyle().Foreground(colorCyan).Render("▓"))
+		case trailTwo:
+			b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Render("▒"))
+		default:
+			b.WriteString(lipgloss.NewStyle().Foreground(colorRule).Render("░"))
+		}
+	}
+	return b.String()
+}
+
+func agentLoader(step int) string {
+	frames := []string{"◜", "◝", "◞", "◟"}
+	orbit := lipgloss.NewStyle().Bold(true).Foreground(colorCyan).Render(frames[step%len(frames)])
+	return orbit + " " + animatedScanner(step, 10)
 }
 
 func renderPanel(style lipgloss.Style, width int, content string) string {
@@ -2499,6 +3138,16 @@ func firstEnvironment(names ...string) string {
 	return ""
 }
 
+func splitEnvironmentList(value string) []string {
+	var result []string
+	for _, item := range strings.Split(value, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
 func screenName(value screen) string {
 	switch value {
 	case screenConnect:
@@ -2525,6 +3174,10 @@ func screenName(value screen) string {
 		return "CHANGE PREVIEW"
 	case screenApplying:
 		return "APPLYING CHANGE"
+	case screenRehearsing:
+		return "REHEARSING CHANGE"
+	case screenEvidence:
+		return "EVIDENCE"
 	default:
 		return "HOME"
 	}

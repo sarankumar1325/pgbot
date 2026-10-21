@@ -36,6 +36,7 @@ const (
 // every local server (Ollama, vLLM, LM Studio) accept it, so pointing
 // $QUERYSHIFT_AI_BASE_URL at any of them is the whole integration.
 type OpenAIProvider struct {
+	Label   string
 	APIKey  string
 	BaseURL string
 	HTTP    *http.Client
@@ -45,7 +46,12 @@ type OpenAIProvider struct {
 	ReasoningEffort string
 }
 
-func (p *OpenAIProvider) Name() string { return "openai" }
+func (p *OpenAIProvider) Name() string {
+	if p.Label != "" {
+		return p.Label
+	}
+	return "openai"
+}
 
 func (p *OpenAIProvider) LanguageModel(_ context.Context, modelID string) (LanguageModel, error) {
 	if modelID == "" {
@@ -59,7 +65,7 @@ type openaiModel struct {
 	model    string
 }
 
-func (m *openaiModel) Provider() string { return "openai" }
+func (m *openaiModel) Provider() string { return m.provider.Name() }
 func (m *openaiModel) Model() string    { return m.model }
 func (m *openaiModel) Endpoint() string { return m.provider.BaseURL }
 

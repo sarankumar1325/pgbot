@@ -72,6 +72,9 @@ func main() {
 	root.AddCommand(newERDCmd())
 	root.AddCommand(newActivityCmd())
 	root.AddCommand(newReportCmd())
+	root.AddCommand(newChangeCmd())
+	root.AddCommand(newEnvironmentsCmd())
+	root.AddCommand(newRunnerCmd())
 
 	// --ssh-tunnel is global: every command that takes a connection can need it,
 	// and it changes only HOW the DSN is reached, never what is inspected.

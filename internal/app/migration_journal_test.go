@@ -23,7 +23,14 @@ func TestMigrationJournalVersionsSQLAndSchemaWithIntegrityManifest(t *testing.T)
 			Columns: []erd.Column{{Name: "id", Type: "bigint", PK: true}},
 		}}},
 	}
-	journal, err := startMigrationJournal("CREATE INDEX users_email_idx ON public.users(email)", plan, workspace)
+	contract, err := BuildChangeContract("CREATE INDEX users_email_idx ON public.users(email)", workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contract.Plan != plan {
+		t.Fatalf("contract plan changed: got %+v want %+v", contract.Plan, plan)
+	}
+	journal, err := startMigrationJournal(contract, workspace, "production")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +40,7 @@ func TestMigrationJournalVersionsSQLAndSchemaWithIntegrityManifest(t *testing.T)
 		t.Fatal(err)
 	}
 	content := string(sqlBytes)
-	for _, want := range []string{"queryshift:up", "CREATE INDEX", "queryshift:down", "DROP INDEX IF EXISTS users_email_idx"} {
+	for _, want := range []string{"change contract " + contract.ID, "queryshift:up", "CREATE INDEX", "queryshift:down", "DROP INDEX IF EXISTS users_email_idx"} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("migration is missing %q:\n%s", want, content)
 		}
@@ -41,9 +48,20 @@ func TestMigrationJournalVersionsSQLAndSchemaWithIntegrityManifest(t *testing.T)
 	if mode := fileMode(t, journal.sqlPath); mode != 0o600 {
 		t.Fatalf("migration mode = %o, want 600", mode)
 	}
+	contractBytes, err := os.ReadFile(journal.contractPath)
+	if err != nil {
+		t.Fatalf("change contract artifact missing: %v", err)
+	}
+	if !strings.Contains(string(contractBytes), contract.ContractSHA256) || fileMode(t, journal.contractPath) != 0o600 {
+		t.Fatalf("change contract artifact is incomplete or insecure: %s", contractBytes)
+	}
 	manifest := filepath.Join(filepath.Dir(journal.sqlPath), "queryshift.sum")
-	if _, err := os.Stat(manifest); err != nil {
+	manifestBytes, err := os.ReadFile(manifest)
+	if err != nil {
 		t.Fatalf("integrity manifest missing: %v", err)
+	}
+	if !strings.Contains(string(manifestBytes), filepath.Base(journal.contractPath)) {
+		t.Fatalf("integrity manifest does not cover the contract:\n%s", manifestBytes)
 	}
 
 	after := *workspace
@@ -55,7 +73,7 @@ func TestMigrationJournalVersionsSQLAndSchemaWithIntegrityManifest(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(metaBytes), `"status": "applied"`) || !strings.Contains(string(metaBytes), "after_schema_sha256") {
+	if !strings.Contains(string(metaBytes), `"status": "applied"`) || !strings.Contains(string(metaBytes), "after_schema_sha256") || !strings.Contains(string(metaBytes), contract.ID) {
 		t.Fatalf("metadata was not finalized:\n%s", metaBytes)
 	}
 }
